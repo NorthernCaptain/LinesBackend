@@ -1,0 +1,21 @@
+How to run node without root but to be able to listen on 443 port
+
+1. Use 'sudo setcap 'cap_net_bind_service=+ep' /usr/bin/node'
+This will grant all node ability to listen to privileged ports
+
+2. Use setuid after starting the server to go unprivileged
+http.createServer(app)
+  .listen(80, function(err) {
+    if (err) return cb(err);
+
+    // Find out which user used sudo through the environment variable
+    var uid = parseInt(process.env.SUDO_UID);
+    // Set our server's uid to that user
+    if (uid) process.setuid(uid);
+    console.log('Server\'s UID is now ' + process.getuid());
+  });
+
+3. Redirect 443 port to unprivileged 8443 port and run node on 8443
+iptables -A INPUT -i eth0 -p tcp --dport 443 -j ACCEPT
+iptables -A INPUT -i eth0 -p tcp --dport 8443 -j ACCEPT
+iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 443 -j REDIRECT --to-port 8443

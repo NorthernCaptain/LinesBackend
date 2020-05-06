@@ -28,4 +28,4 @@ httpsServer.listen(8443, '0.0.0.0', (err) => {
         console.log('Server started, UID is now ' + process.getuid());
 });
 
-app.listen(8080, '0.0.0.0');
+app.listen(10080, '0.0.0.0');

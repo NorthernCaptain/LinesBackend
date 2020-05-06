@@ -9,8 +9,8 @@ app.use(helmet());
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
-const privateKey  = fs.readFileSync('/etc/letsencrypt/live/lines.navalclash.com/privkey.pem', 'utf8');
-const certificate = fs.readFileSync('/etc/letsencrypt/live/lines.navalclash.com/fullchain.pem', 'utf8');
+const privateKey  = fs.readFileSync('etc/letsencrypt/live/lines.navalclash.com/privkey.pem', 'utf8');
+const certificate = fs.readFileSync('etc/letsencrypt/live/lines.navalclash.com/fullchain.pem', 'utf8');
 const credentials = {key: privateKey, cert: certificate};
 
 const httpsServer = https.createServer(credentials, app);

@@ -6,8 +6,6 @@ const helmet = require('helmet');
 
 const app = express();
 app.use(helmet());
-app.use(bodyParser.json());
-app.use(express.static('public'));
 //redirect all http traffic to https
 app.use(function(req, res, next) {
     if(!req.secure) {
@@ -15,6 +13,8 @@ app.use(function(req, res, next) {
     }
     next();
 });
+app.use(bodyParser.json());
+app.use(express.static('public'));
 
 const privateKey  = fs.readFileSync('etc/letsencrypt/live/lines.navalclash.com/privkey.pem', 'utf8');
 const certificate = fs.readFileSync('etc/letsencrypt/live/lines.navalclash.com/fullchain.pem', 'utf8');

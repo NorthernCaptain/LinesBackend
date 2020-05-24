@@ -8,12 +8,12 @@ const helmet = require('helmet');
 const app = express();
 app.use(helmet());
 //redirect all http traffic to https
-// app.use(function(req, res, next) {
-//     if(!req.secure) {
-//         return res.redirect(['https://', req.get('Host'), req.baseUrl].join(''));
-//     }
-//     next();
-// });
+app.use(function(req, res, next) {
+    if(!req.secure) {
+        return res.redirect(['https://', req.get('Host'), req.baseUrl].join(''));
+    }
+    next();
+});
 
 app.use(bodyParser.json());
 app.use(express.static('public'));
@@ -43,7 +43,7 @@ httpsServer.listen(8443, '0.0.0.0', (err) => {
         if (err) {
             console.error("ERROR: ", err);
         }
-        console.log('Server started, UID is now ' + process.getuid());
+        console.log('Server 1.0.0 started, UID is now ' + process.getuid());
 });
 
 app.listen(10080, '0.0.0.0');

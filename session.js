@@ -148,7 +148,8 @@ const updateSession = (req, res, next) => {
         uuid: body.uuid,
         ip: req.connection.remoteAddress,
         score: body.score,
-        level: body.level ? body.level : 0
+        level: body.level ? body.level : 0,
+        mode: body.mode
     };
 
     dbUpdateGameSession(session)

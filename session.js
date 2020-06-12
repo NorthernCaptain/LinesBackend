@@ -25,8 +25,8 @@ const dbCreateGameSession = (session) => {
 
 const dbUpdateGameSession = (session) => {
     return new Promise((resolve => {
-        db.query("update game_session set pings=pings+1, date_updated=current_timestamp, score=?, is_finished=? where uuid=?",
-            [session.score, session.done ? 1 : 0, session.uuid], (error, result) => {
+        db.query("update game_session set pings=pings+1, date_updated=current_timestamp, score=?, is_finished=?, level=? where uuid=?",
+            [session.score, session.done ? 1 : 0, session.level, session.uuid], (error, result) => {
                 if(error) console.log("ERROR updating game session: ", error, session);
                 resolve(session)
             })
@@ -63,6 +63,28 @@ const dbRankGameScore = (session) => {
                   where scores.id = ?
             `,
             [session.mode, session.id], (error, result) => {
+                if(error) console.log("ERROR selecting game score rank: ", error, session);
+                if(result && result.length) {
+                    session.rank = result[0].rank
+                }
+                resolve(session)
+            })
+    }))
+}
+
+const dbPreliminaryRankGameScore = (session) => {
+    return new Promise((resolve => {
+        db.query(`select min(num) rank from (
+                    select (@row_number := @row_number + 1) AS num,
+                    game_scores.*
+                    from game_scores,
+                    (SELECT @row_number := 0) AS row
+                    where game_scores.game_type = ?
+                    order by score desc, id desc
+                    ) scores
+                  where scores.score<= ?
+            `,
+            [session.mode, session.score], (error, result) => {
                 if(error) console.log("ERROR selecting game score rank: ", error, session);
                 if(result && result.length) {
                     session.rank = result[0].rank
@@ -125,10 +147,15 @@ const updateSession = (req, res, next) => {
     let session = {
         uuid: body.uuid,
         ip: req.connection.remoteAddress,
-        score: body.score
+        score: body.score,
+        level: body.level ? body.level : 0
     };
 
-    dbUpdateGameSession(session).then(sess => {
+    dbUpdateGameSession(session)
+        .then(sess => {
+            return dbPreliminaryRankGameScore(sess)
+        })
+        .then(sess => {
             res.send(JSON.stringify(
                 {
                     success: true,

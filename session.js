@@ -72,6 +72,23 @@ const dbRankGameScore = (session) => {
     }))
 }
 
+const dbLowestRankGameScore = (session) => {
+    return new Promise((resolve => {
+        db.query(`select count(*)+1 as rank
+                    from game_scores
+                    where game_scores.game_type = ?
+            `,
+            [session.mode], (error, result) => {
+                if(error) console.log("ERROR selecting lowest game score rank: ", error, session);
+                if(result && result.length) {
+                    session.rank = result[0].rank
+                }
+                resolve(session)
+            })
+    }))
+}
+
+
 const dbPreliminaryRankGameScore = (session) => {
     return new Promise((resolve => {
         db.query(`select min(num) rank from (
@@ -155,6 +172,10 @@ const updateSession = (req, res, next) => {
     dbUpdateGameSession(session)
         .then(sess => {
             return dbPreliminaryRankGameScore(sess)
+        })
+        .then(sess => {
+            if(sess.rank) return sess;
+            else return dbLowestRankGameScore(sess)
         })
         .then(sess => {
             res.send(JSON.stringify(

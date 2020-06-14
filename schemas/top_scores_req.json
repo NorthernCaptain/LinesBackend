@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "https://lines.navalclash.com/schemas/top_scores_req.json",
+  "type": "object",
+  "title": "/scores/top server request",
+  "description": "/scores/top - leaderboards server request",
+  "default": {},
+  "examples": [
+    {
+      "app": "lines",
+      "version": "0.7.0",
+      "mode": "easy",
+      "limit": 20
+    }
+  ],
+  "required": [
+    "app",
+    "version",
+    "mode",
+    "limit"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "app": {
+      "$id": "#/properties/app",
+      "type": "string",
+      "title": "Application name",
+      "description": "Client application name",
+      "default": "",
+      "examples": [
+        "lines"
+      ]
+    },
+    "version": {
+      "$id": "#/properties/version",
+      "type": "string",
+      "title": "Client version",
+      "description": "Client version",
+      "default": "0.0.0",
+      "examples": [
+        "0.7.0"
+      ]
+    },
+    "mode": {
+      "$id": "#/properties/mode",
+      "type": "string",
+      "title": "Game mode",
+      "description": "Game mode used to play this game, should be easy or hard",
+      "default": "",
+      "enum": [
+        "easy",
+        "hard"
+      ],
+      "examples": [
+        "easy",
+        "hard"
+      ]
+    },
+    "limit": {
+      "$id": "#/properties/limit",
+      "type": "integer",
+      "title": "Limit number of entries in the leaderboard",
+      "description": "Limit number of entries in the leaderboard, should be between 5 - 100",
+      "default": 0,
+      "minimum": 5,
+      "maximum": 100,
+      "examples": [
+        0
+      ]
+    }
+  }
+}

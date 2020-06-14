@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "https://lines.navalclash.com/schemas/session_new_req.json",
+  "type": "object",
+  "title": "/session server request",
+  "description": "/session - new game session server request",
+  "default": {},
+  "examples": [
+    {
+      "app": "lines",
+      "version": "0.7.0"
+    }
+  ],
+  "required": [
+    "app",
+    "version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "app": {
+      "$id": "#/properties/app",
+      "type": "string",
+      "title": "Application name",
+      "description": "Client application name",
+      "default": "",
+      "examples": [
+        "lines"
+      ]
+    },
+    "version": {
+      "$id": "#/properties/version",
+      "type": "string",
+      "title": "Client version",
+      "description": "Client version",
+      "default": "0.0.0",
+      "examples": [
+        "0.7.0"
+      ]
+    }
+  }
+}

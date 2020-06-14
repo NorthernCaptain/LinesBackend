@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "https://lines.navalclash.com/schemas/session_update_resp.json",
+  "type": "object",
+  "title": "/session/update server response",
+  "description": "Server response for session/update request",
+  "default": {},
+  "examples": [
+    {
+      "success": true,
+      "data": {
+        "uuid": "7b895b4d-3dcd-4b3e-ac46-e009558b485e",
+        "ip": "162.219.176.42",
+        "score": 100,
+        "level": 2,
+        "mode": "easy",
+        "rank": 2
+      }
+    }
+  ],
+  "required": [
+    "success",
+    "data"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "success": {
+      "$id": "#/properties/success",
+      "type": "boolean",
+      "title": "Operation success result",
+      "description": "Indicates successful result or not (true/false)",
+      "default": false,
+      "examples": [
+        true
+      ]
+    },
+    "data": {
+      "$id": "#/properties/data",
+      "type": "object",
+      "title": "Response result data",
+      "description": "Result object containing server set data",
+      "default": {},
+      "examples": [
+        {
+          "uuid": "7b895b4d-3dcd-4b3e-ac46-e009558b485e",
+          "ip": "162.219.176.42",
+          "score": 100,
+          "level": 2,
+          "mode": "easy",
+          "rank": 2
+        }
+      ],
+      "required": [
+        "uuid",
+        "ip",
+        "rank"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "uuid": {
+          "$id": "#/properties/data/properties/uuid",
+          "type": "string",
+          "title": "session uuid",
+          "description": "Game session uuid",
+          "default": "",
+          "examples": [
+            "7b895b4d-3dcd-4b3e-ac46-e009558b485e"
+          ]
+        },
+        "ip": {
+          "$id": "#/properties/data/properties/ip",
+          "type": "string",
+          "title": "Client ip address",
+          "description": "Client IP address detected by the server",
+          "default": "0.0.0.0",
+          "examples": [
+            "162.219.176.42"
+          ]
+        },
+        "score": {
+          "$id": "#/properties/data/properties/score",
+          "type": "integer",
+          "title": "Current game score",
+          "description": "Current game score passed to the server in this update",
+          "default": 0,
+          "examples": [
+            100
+          ]
+        },
+        "level": {
+          "$id": "#/properties/data/properties/level",
+          "type": "integer",
+          "title": "Game level",
+          "description": "Current game level passed to the server in the update request",
+          "default": 0,
+          "examples": [
+            2
+          ]
+        },
+        "mode": {
+          "$id": "#/properties/data/properties/mode",
+          "type": "string",
+          "title": "Game mode",
+          "description": "Game mode used to play this game, should be easy or hard",
+          "default": "",
+          "enum": ["easy", "hard"],
+          "examples": [
+            "easy", "hard"
+          ]
+        },
+        "rank": {
+          "$id": "#/properties/data/properties/rank",
+          "type": "integer",
+          "title": "Current rank in the top score table",
+          "description": "Current rank (place #) in the top score table for this game mode",
+          "default": 0,
+          "examples": [
+            2
+          ]
+        }
+      }
+    }
+  }
+}

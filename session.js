@@ -1,5 +1,41 @@
 const { v4: uuid } = require('uuid');
 const mysql = require('mysql');
+const Ajv = require('ajv');
+const fs = require('fs');
+const {ServerError, ClientError} = require('./errors');
+
+const jsonv = new Ajv();
+
+const addSchema = (name, path, jsonv) => {
+    let data = JSON.parse(fs.readFileSync('schemas/' + path).toString());
+    jsonv.addSchema(data, name);
+};
+
+const initValidators = () => {
+    addSchema('session_update_resp', 'session_update_resp.json', jsonv);
+    addSchema('session_update_req', 'session_update_req.json', jsonv);
+    addSchema('session_new_resp', 'session_new_resp.json', jsonv);
+    addSchema('session_new_req', 'session_new_req.json', jsonv);
+    addSchema('session_finish_resp', 'session_finish_resp.json', jsonv);
+    addSchema('session_finish_req', 'session_finish_req.json', jsonv);
+    addSchema('top_scores_resp', 'top_scores_resp.json', jsonv);
+    addSchema('top_scores_req', 'top_scores_req.json', jsonv);
+};
+
+const validate = (data, schemaName) => {
+    if(!jsonv.validate(schemaName, data)) {
+        throw new ClientError(jsonv.errorsText());
+    }
+};
+
+const respond = (data, schemaName, res) => {
+    let msg = { success: true, data: data };
+    if(jsonv.validate(schemaName, msg)) {
+        res.json(msg)
+    } else {
+        throw new ServerError(jsonv.errorsText());
+    }
+};
 
 const db = mysql.createPool({
     connectionLimit: 10,
@@ -115,7 +151,10 @@ const dbTopGameScores = (session) => {
     return new Promise((resolve => {
         db.query(`
                     select (@row_number := @row_number + 1) AS num,
-                    game_scores.*
+                        game_scores.score,
+                        game_scores.user_name,
+                        game_scores.level,
+                        game_scores.game_type as mode
                     from game_scores,
                     (SELECT @row_number := 0) AS row
                     where game_scores.game_type = ?
@@ -131,12 +170,9 @@ const dbTopGameScores = (session) => {
 
 
 
-const newSession = (req, res, next) => {
+const newSession = async (req, res) => {
     let body = req.body;
-    if(!body || !body.version) {
-        res.sendStatus(400);
-        return;
-    }
+    validate(body, "session_new_req");
 
     let session = {
         uuid: uuid(),
@@ -144,22 +180,13 @@ const newSession = (req, res, next) => {
         version: body.version
     };
 
-    dbCreateGameSession(session).then(sess => {
-        res.send(JSON.stringify(
-            {
-                success: true,
-                data: sess
-            }));
-        }
-    );
+    session = await dbCreateGameSession(session);
+    respond(session,"session_new_resp", res);
 };
 
-const updateSession = (req, res, next) => {
+const updateSession = async (req, res) => {
     let body = req.body;
-    if(!body || !body.uuid || !body.score) {
-        res.sendStatus(400);
-        return;
-    }
+    validate(body, "session_update_req");
 
     let session = {
         uuid: body.uuid,
@@ -169,35 +196,18 @@ const updateSession = (req, res, next) => {
         mode: body.mode
     };
 
-    dbUpdateGameSession(session)
-        .then(sess => {
-            return dbPreliminaryRankGameScore(sess)
-        })
-        .then(sess => {
-            if(sess.rank) return sess;
-            else return dbLowestRankGameScore(sess)
-        })
-        .then(sess => {
-            res.send(JSON.stringify(
-                {
-                    success: true,
-                    data: sess
-                }));
-        }
-    );
+    session = await dbUpdateGameSession(session);
+    session = await dbPreliminaryRankGameScore(session);
+    if(!session.rank) {
+        session = await dbLowestRankGameScore(session);
+    }
+
+    respond(session,"session_update_resp", res);
 };
 
-const finishSession = (req, res, next) => {
+const finishSession = async (req, res, next) => {
     let body = req.body;
-    if(!body || !body.uuid
-        || !body.score
-        || !body.level
-        || !body.mode
-        || !body.user
-    ) {
-        res.sendStatus(400);
-        return;
-    }
+    validate(body, "session_finish_req");
 
     let session = {
         uuid: body.uuid,
@@ -209,43 +219,23 @@ const finishSession = (req, res, next) => {
         done: 1
     };
 
-    dbUpdateGameSession(session)
-        .then(sess => {
-            return dbCreateGameScores(sess)
-        })
-        .then(sess => {
-            return dbRankGameScore(sess)
-        })
-        .then(sess => {
-            res.send(JSON.stringify(
-                {
-                    success: true,
-                    data: sess
-                }));
-        }
-    );
+    session = await dbUpdateGameSession(session);
+    session = await dbCreateGameScores(session);
+    session = await dbRankGameScore(session);
+    respond(session,"session_finish_resp", res);
 };
 
-const topGameScores = (req, res, next) => {
+const topGameScores = async (req, res) => {
     let body = req.body;
-    if(!body || !body.mode || !body.version || !body.limit) {
-        res.sendStatus(400);
-        return;
-    }
+    validate(body, "top_scores_req");
 
     let session = {
         mode: body.mode,
         limit: Math.min(Math.max(body.limit, 3), 100)
     };
 
-    dbTopGameScores(session).then(sess => {
-            res.send(JSON.stringify(
-                {
-                    success: true,
-                    data: sess
-                }));
-        }
-    );
+    session = await dbTopGameScores(session);
+    respond(session,"top_scores_resp", res);
 };
 
 
@@ -253,3 +243,4 @@ exports.newSession = newSession;
 exports.updateSession = updateSession;
 exports.finishSession = finishSession;
 exports.topGameScores = topGameScores;
+exports.initValidators = initValidators;

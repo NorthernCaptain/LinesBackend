@@ -12,8 +12,7 @@
       "score": 100,
       "level": 2,
       "mode": "easy",
-      "user": "Leon",
-      "done": 0
+      "user": "Leon"
     }
   ],
   "required": [
@@ -21,8 +20,7 @@
     "mode",
     "version",
     "score",
-    "user",
-    "done"
+    "user"
   ],
   "additionalProperties": false,
   "properties": {
@@ -88,18 +86,6 @@
       "description": "User name who played the game",
       "examples": [
         "John"
-      ]
-    },
-    "done": {
-      "$id": "#/properties/done",
-      "type": "integer",
-      "title": "Is session done or not, 1 - done or 0 - still not done",
-      "description": "Is session finished or not (1 or 0)",
-      "default": 0,
-      "minimum": 0,
-      "maximum": 1,
-      "examples": [
-        0
       ]
     }
   }

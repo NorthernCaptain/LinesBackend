@@ -1,13 +1,14 @@
 const { v4: uuid } = require('uuid');
 const mysql = require('mysql');
 const {ServerError, ClientError} = require('./errors');
-const {addSchema, loadSchema, jsonv} = require('./utils/validate.js')
+const {addSchema, loadSchema, getSchema, jsonv} = require('./utils/validate.js')
 const {respond} = require('./utils/respond.js')
 
 
 const tables = loadSchema('oldsdb/tables.json')
 
 const inArray = (arr, obj) => {
+console.log(obj)
     if (Array.isArray(arr)){
         for (let el in arr){
             if (arr[el] === obj){ return true}
@@ -44,14 +45,20 @@ const updateRecord = async (req, res) => {
 
 const getRecords = async (req, res) => {
 
-    let table = req.params.tbl;
-
+    let table = req.params.tbl.toLowerCase();
+    if ( !tables[table] ) {
+        throw new ServerError('---');
+    }
+    let req_schema = `${table}_req`;
+    let resp_schema = `${table}_resp`;
     let query = req.query;
-    let schema = loadSchema('oldsdb/gem_list_resp.json')
-//    console.log(schema)
-    schema = schema.properties.data.items.properties
+    let schema = getSchema(resp_schema)
+    let props = schema.properties.data.items.properties
+    if ( !props ) {
+        throw new ServerError('missing schema');
+    }
     let columns = [];
-    for (let i in schema){
+    for ( let i in props ){
         columns.push(i)
     }
     columns = columns.join(', ')
@@ -60,19 +67,19 @@ const getRecords = async (req, res) => {
     let params = [];
 
     for ( let key in query ) {
-        where.push(key + ' = ' + '?');
+        where.push(`${key} = ?`);
         params.push(query[key]);
     }
 
     let limit_ = where.length == 0 ? 'LIMIT 100' : ''
     where = where.length > 0 ? 'WHERE ' + where.join(' AND ') : ''
-    sql = `SELECT ${columns} FROM ${table} ${where} ${limit_};`
+    sql = `SELECT ${columns} FROM ${tables[table]} ${where} ${limit_};`
 
 //    validate(body, "top_scores_req");
 
     data = await dbGetRecord(sql, params);
     console.log(data)
-    respond(data, "gem_list_resp", res);
+    respond(data, resp_schema, res);
 };
 
 

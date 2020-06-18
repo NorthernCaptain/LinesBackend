@@ -1,9 +1,7 @@
 const { v4: uuid } = require('uuid');
 const mysql = require('mysql');
-const Ajv = require('ajv');
-const fs = require('fs');
 const {ServerError, ClientError} = require('./errors');
-const {addSchema, loadSchema, validate, jsonv} = require('./utils/validate.js')
+const {validate} = require('./utils/validate.js')
 const {respond} = require('./utils/respond.js')
 
 const db = mysql.createPool({

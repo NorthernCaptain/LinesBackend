@@ -54,9 +54,8 @@ const getRecords = async (req, res) => {
     let req_schema = `get_req`;
     let resp_schema = `${table}_resp`;
     let query = req.query;
-    let t = {[table_name]: true};
 
-    validate({...query,...t}, req_schema);
+    validate({...query,...{[table_name]: true}}, req_schema);
 
     let schema = getSchema(resp_schema)
     let props = schema.properties.data.items.properties

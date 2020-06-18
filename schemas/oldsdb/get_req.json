@@ -25,7 +25,7 @@
       "description": "D4D job id",
       "default": ""
     },
-    "jobstatue": {
+    "jobstatus": {
       "$id": "JobStatus",
       "type": "string",
       "enum": ["Active", "Finished", "Waiting"],
@@ -65,7 +65,7 @@
         "jobid": {"$ref": "#/definitions/jobid"},
         "workerid": {"$ref": "#/definitions/id"},
         "client": {"$ref": "#/definitions/name"},
-        "jobstatue": {"$ref": "#/definitions/jobstatue"},
+        "jobstatus": {"$ref": "#/definitions/jobstatus"},
         "jobtype": {"$ref": "#/definitions/jobtype"}
       },
       "additionalProperties": false

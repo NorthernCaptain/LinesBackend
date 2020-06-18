@@ -1,0 +1,4 @@
+/tmp/*
+/.idea/*
+/etc/*
+/node_modules/*

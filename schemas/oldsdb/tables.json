@@ -1,0 +1,7 @@
+{
+  "workers": "WORKERS",
+  "jobs":  "JOBS",
+  "gem_list": "GEM_LIST",
+  "timings": "TIMINGS",
+  "gems": "GEMS"
+}

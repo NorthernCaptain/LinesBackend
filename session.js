@@ -3,39 +3,8 @@ const mysql = require('mysql');
 const Ajv = require('ajv');
 const fs = require('fs');
 const {ServerError, ClientError} = require('./errors');
-
-const jsonv = new Ajv();
-
-const addSchema = (name, path, jsonv) => {
-    let data = JSON.parse(fs.readFileSync('schemas/' + path).toString());
-    jsonv.addSchema(data, name);
-};
-
-const initValidators = () => {
-    addSchema('session_update_resp', 'session_update_resp.json', jsonv);
-    addSchema('session_update_req', 'session_update_req.json', jsonv);
-    addSchema('session_new_resp', 'session_new_resp.json', jsonv);
-    addSchema('session_new_req', 'session_new_req.json', jsonv);
-    addSchema('session_finish_resp', 'session_finish_resp.json', jsonv);
-    addSchema('session_finish_req', 'session_finish_req.json', jsonv);
-    addSchema('top_scores_resp', 'top_scores_resp.json', jsonv);
-    addSchema('top_scores_req', 'top_scores_req.json', jsonv);
-};
-
-const validate = (data, schemaName) => {
-    if(!jsonv.validate(schemaName, data)) {
-        throw new ClientError(jsonv.errorsText());
-    }
-};
-
-const respond = (data, schemaName, res) => {
-    let msg = { success: true, data: data };
-    if(jsonv.validate(schemaName, msg)) {
-        res.json(msg)
-    } else {
-        throw new ServerError(jsonv.errorsText());
-    }
-};
+const {addSchema, loadSchema, validate, jsonv} = require('./utils/validate.js')
+const {respond} = require('./utils/respond.js')
 
 const db = mysql.createPool({
     connectionLimit: 10,
@@ -243,4 +212,4 @@ exports.newSession = newSession;
 exports.updateSession = updateSession;
 exports.finishSession = finishSession;
 exports.topGameScores = topGameScores;
-exports.initValidators = initValidators;
+

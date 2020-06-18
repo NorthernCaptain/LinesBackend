@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://lines.navalclash.com/schemas/oldsdb/gem_list_resp.json",
+  "type": "object",
+  "title": "/oldsdb/gem_list server response",
+  "description": "Server response for /oldsdb/gem_list request",
+  "default": {},
+
+  "examples": [
+    {
+      "success": true,
+      "data": [
+        {
+        "id": 1,
+        "code": "SWA",
+        "name": "Swarowsky"
+        }
+      ]
+    }
+  ],
+  "required": [
+    "success",
+    "data"
+  ],
+  "properties": {
+    "success": {
+      "$id": "#/properties/success",
+      "type": "boolean",
+      "title": "Operation success result",
+      "description": "Indicates successful result or not (true/false)",
+      "default": false,
+      "examples": [
+        true
+      ]
+    },
+    "data": {
+      "$id": "#/properties/data",
+      "type": "array",
+      "title": "Response result data",
+      "description": "Result object containing server set data",
+      "additionalProperties": false,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$id": "#/properties/id",
+            "type": "integer",
+            "title": "Gem id",
+            "description": "Gem ID - PK integer",
+            "default": false,
+            "examples": [
+              1
+            ]
+          },
+          "code": {
+            "$id": "#/properties/code",
+            "type": "string",
+            "title": "Gem code",
+            "description": "Gem short code",
+            "default": false,
+            "examples": [
+              "SWA",
+              "CH"
+            ]
+          },
+          "name": {
+            "$id": "#/properties/name",
+            "type": "string",
+            "title": "Gem name",
+            "description": "Gem full name",
+            "default": false,
+            "examples": [
+              "Swarowsky",
+              "Chines"
+            ]
+          }
+        },
+        "examples": [
+          {
+            "id": 1,
+            "code": "SWA",
+            "name": "Swarowsky"
+          }
+        ],
+        "required": [
+          "id",
+          "code",
+          "name"
+        ]
+        }
+
+    }
+  }
+
+}

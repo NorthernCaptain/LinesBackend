@@ -1,4 +1,6 @@
-const {newSession, updateSession, finishSession, topGameScores, initValidators} = require('./session');
+const {newSession, updateSession, finishSession, topGameScores} = require('./session');
+const {initValidators} = require('./utils/validate');
+const {getRecords, newRecords, updateRecord, initValidatorsOlds} = require('./oldsdb');
 const {expressErrorHandler} = require('./errors');
 const express = require('express');
 const fs = require('fs');
@@ -36,6 +38,12 @@ app.post('/session/finish', wrap(finishSession));
 //response: {"success":true,"data":[{"num":1,"id":5,"user_name":"Leo2","score":83,"date_created":"2020-05-23T01:34:25.000Z","level":3,"seconds_played":3771,"game_type":"easy","session_id":2},{"num":2,"id":4,"user_name":"Leo","score":53,"date_created":"2020-05-23T01:31:44.000Z","level":2,"seconds_played":-3610,"game_type":"easy","session_id":2},{"num":3,"id":6,"user_name":"Leo3","score":43,"date_created":"2020-05-23T01:51:12.000Z","level":3,"seconds_played":4778,"game_type":"easy","session_id":2}]}
 app.post('/scores/top', wrap(topGameScores));
 
+app.get('/oldsdb/:tbl', wrap(getRecords));
+
+app.post('/oldsdb/:tbl', wrap(newRecords));
+
+app.put('/oldsdb/:tbl', wrap(updateRecord));
+
 app.use(expressErrorHandler);
 
 initValidators();
@@ -49,7 +57,7 @@ httpsServer.listen(8443, '0.0.0.0', (err) => {
         if (err) {
             console.error("ERROR: ", err);
         }
-        console.log('Server 1.1.0 started, UID is now ' + process.getuid());
+        console.log(`Server 1.1.0 started, UID is now ${process.getuid ? process.getuid() : ''}`);
 });
 
 app.listen(10080, '0.0.0.0');

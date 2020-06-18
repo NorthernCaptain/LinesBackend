@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://lines.navalclash.com/schemas/oldsdb/workers_resp.json",
+  "$id": "https://us.navalclash.com/schemas/oldsdb/workers_resp.json",
   "type": "object",
   "title": "/oldsdb/workers server response",
   "description": "Server response for /oldsdb/workers request",

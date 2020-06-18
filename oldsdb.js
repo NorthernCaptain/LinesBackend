@@ -1,14 +1,13 @@
 const { v4: uuid } = require('uuid');
 const mysql = require('mysql');
 const {ServerError, ClientError} = require('./errors');
-const {addSchema, loadSchema, getSchema, jsonv} = require('./utils/validate.js')
+const {addSchema, loadSchema, getSchema, validate, jsonv} = require('./utils/validate.js')
 const {respond} = require('./utils/respond.js')
 
 
 const tables = loadSchema('oldsdb/tables.json')
 
 const inArray = (arr, obj) => {
-console.log(obj)
     if (Array.isArray(arr)){
         for (let el in arr){
             if (arr[el] === obj){ return true}
@@ -27,6 +26,7 @@ const db = mysql.createPool({
 });
 
 const dbGetRecord = (sql, session) => {
+console.log(sql, session)
     return new Promise((resolve => {
         db.query(sql, session, (error, result) => {
                 if(error) console.log("ERROR selecting top game scores ", error, session);
@@ -46,12 +46,18 @@ const updateRecord = async (req, res) => {
 const getRecords = async (req, res) => {
 
     let table = req.params.tbl.toLowerCase();
-    if ( !tables[table] ) {
+    let table_name = tables[table];
+    if ( !table_name ) {
         throw new ServerError('---');
     }
-    let req_schema = `${table}_req`;
+//    let req_schema = `${table}_get_req`;
+    let req_schema = `get_req`;
     let resp_schema = `${table}_resp`;
     let query = req.query;
+    let t = {[table_name]: true};
+
+    validate({...query,...t}, req_schema);
+
     let schema = getSchema(resp_schema)
     let props = schema.properties.data.items.properties
     if ( !props ) {
@@ -74,8 +80,6 @@ const getRecords = async (req, res) => {
     let limit_ = where.length == 0 ? 'LIMIT 100' : ''
     where = where.length > 0 ? 'WHERE ' + where.join(' AND ') : ''
     sql = `SELECT ${columns} FROM ${tables[table]} ${where} ${limit_};`
-
-//    validate(body, "top_scores_req");
 
     data = await dbGetRecord(sql, params);
     console.log(data)

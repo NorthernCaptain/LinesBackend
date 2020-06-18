@@ -1,5 +1,6 @@
 const Ajv = require('ajv');
 const fs = require('fs');
+const {ServerError, ClientError} = require('../errors.js');
 
 const jsonv =  new Ajv();
 
@@ -18,6 +19,7 @@ const addSchema = (name, path, jsonv) => {
 };
 
 const validate = (data, schemaName) => {
+console.log(data)
     if(!jsonv.validate(schemaName, data)) {
         throw new ClientError(jsonv.errorsText());
     }
@@ -37,6 +39,10 @@ const initValidators = () => {
     addSchema('workers_resp', 'oldsdb/workers_resp.json', jsonv);
     addSchema('jobs_resp', 'oldsdb/jobs_resp.json', jsonv);
     addSchema('gem_list_resp', 'oldsdb/gem_list_resp.json', jsonv);
+    addSchema('gems_resp', 'oldsdb/gems_resp.json', jsonv);
+    addSchema('timings_resp', 'oldsdb/timings_resp.json', jsonv);
+
+    addSchema('get_req', 'oldsdb/get_req.json', jsonv);
 };
 
 exports.jsonv = jsonv;

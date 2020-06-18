@@ -1,0 +1,131 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "https://us.navalclash.com/schemas/oldsdb/get_req.json",
+  "type": "object",
+  "title": "/oldsdb/{table} GET server request",
+  "description": "/oldsdb/{table} -table server request",
+  "default": {},
+  "definitions": {
+    "table": {
+      "$id": "TableName",
+      "type": "boolean"
+    },
+    "id": {
+      "$id": "db_id",
+      "type": "string",
+      "pattern": "[0-9]+",
+      "title": "id",
+      "description": "Autoincrement table int id",
+      "default": ""
+      },
+    "jobid": {
+      "$id": "D4D_job_id",
+      "type": "string",
+      "title": "jobid",
+      "description": "D4D job id",
+      "default": ""
+    },
+    "jobstatue": {
+      "$id": "JobStatus",
+      "type": "string",
+      "enum": ["Active", "Finished", "Waiting"],
+      "title": "job_status",
+      "description": "job status",
+      "default": "Waiting"
+    },
+    "jobtype": {
+      "$id": "JobType",
+      "type": "string",
+      "enum": ["New", "Continued"],
+      "title": "job_type",
+      "description": "job type",
+      "default": "New"
+    },
+    "name": {
+      "$id": "PersonName",
+      "type": "string",
+      "title": "name",
+      "description": "Worker/client full name",
+      "default": ""
+    }
+  },
+  "oneOf": [
+    {
+      "anyOf": [
+        {"required": ["JOBS"]},
+        {"required": ["JOBS","id"]},
+        {"required": ["JOBS","jobid"]},
+        {"required": ["JOBS","workerid"]},
+        {"required": ["JOBS","jobstatus"]},
+        {"required": ["JOBS","jobtype"]}
+      ],
+      "properties": {
+        "JOBS": {"$ref": "#/definitions/table"},
+        "id": {"$ref": "#/definitions/id"},
+        "jobid": {"$ref": "#/definitions/jobid"},
+        "workerid": {"$ref": "#/definitions/id"},
+        "client": {"$ref": "#/definitions/name"},
+        "jobstatue": {"$ref": "#/definitions/jobstatue"},
+        "jobtype": {"$ref": "#/definitions/jobtype"}
+      },
+      "additionalProperties": false
+    },
+    {
+      "anyOf": [
+        {"required": ["WORKERS"]},
+        {"required": ["WORKERS","id"]},
+        {"required": ["WORKERS","name"]}
+      ],
+      "properties": {
+        "WORKERS": {"$ref": "#/definitions/table"},
+        "id": {
+          "$ref": "#/definitions/id"
+        },
+        "name": {"$ref": "#/definitions/name"}
+      },
+      "additionalProperties": false
+    },
+    {
+      "anyOf": [
+        {"required": ["GEM_LIST"]},
+        {"required": ["GEM_LIST","id"]}
+      ],
+      "properties": {
+        "GEM_LIST": {"$ref": "#/definitions/table"},
+        "id": {
+          "$ref": "#/definitions/id"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "anyOf": [
+        {"required": ["GEMS"]},
+        {"required": ["GEMS","id"]},
+        {"required": ["GEMS","jobid"]},
+        {"required": ["GEMS","gemid"]}
+      ],
+      "properties": {
+        "GEMS": {"$ref": "#/definitions/table"},
+        "id": {"$ref": "#/definitions/id"},
+        "jobid": {"$ref": "#/definitions/id"},
+        "gemid": {"$ref": "#/definitions/id"}
+      },
+      "additionalProperties": false
+    },
+    {
+      "anyOf": [
+        {"required": ["TIMINGS"]},
+        {"required": ["TIMINGS","jobid"]},
+        {"required": ["TIMINGS","workerid"]}
+      ],
+      "properties": {
+        "TIMINGS": {"$ref": "#/definitions/table"},
+        "jobid": {"$ref": "#/definitions/id"},
+        "workerid": {"$ref": "#/definitions/id"}
+      },
+      "additionalProperties": false
+    }
+  ]
+
+}

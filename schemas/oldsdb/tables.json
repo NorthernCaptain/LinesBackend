@@ -2,6 +2,6 @@
   "workers": "WORKERS",
   "jobs":  "JOBS",
   "gem_list": "GEM_LIST",
-  "timings": "TIMIMGS",
+  "timings": "TIMINGS",
   "gems": "GEMS"
 }

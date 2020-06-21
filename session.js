@@ -36,6 +36,32 @@ const dbUpdateGameSession = (session) => {
     }))
 }
 
+const dbGetGameSession = (session) => {
+    return new Promise((resolve => {
+        db.query("select * from game_session where uuid=?",
+            [session.uuid], (error, result) => {
+                if(error) console.log("ERROR updating game session: ", error, session);
+                resolve(result ? result[0] : result)
+            })
+    }))
+}
+
+const dbUpdateGameScores = (session) => {
+    return new Promise((resolve => {
+        db.query(`
+        update game_scores join game_session on game_session.id = game_scores.session_id 
+        set game_scores.user_name=?, game_scores.score=?, game_scores.level=?, game_scores.game_type=?, 
+        game_scores.seconds_played=TIMESTAMPDIFF(SECOND, game_session.date_created, game_session.date_updated) 
+        where game_session.uuid = ?
+        `,
+            [session.user, session.score, session.level, session.mode, session.uuid], (error, result) => {
+                if(error) console.log("ERROR updating game score: ", error, session);
+                session.updated = result.affectedRows
+                resolve(session)
+            })
+    }))
+}
+
 const dbCreateGameScores = (session) => {
     return new Promise((resolve => {
         db.query(`
@@ -57,15 +83,15 @@ const dbRankGameScore = (session) => {
     return new Promise((resolve => {
         db.query(`select min(num) rank from (
                     select (@row_number := @row_number + 1) AS num,
-                    game_scores.*
-                    from game_scores,
+                    game_scores.*, game_session.uuid
+                    from game_scores join game_session on game_scores.session_id=game_session.id,
                     (SELECT @row_number := 0) AS row
                     where game_scores.game_type = ?
                     order by score desc, id desc
                     ) scores
-                  where scores.id = ?
+                  where scores.uuid = ?
             `,
-            [session.mode, session.id], (error, result) => {
+            [session.mode, session.uuid], (error, result) => {
                 if(error) console.log("ERROR selecting game score rank: ", error, session);
                 if(result && result.length) {
                     session.rank = result[0].rank
@@ -164,6 +190,20 @@ const updateSession = async (req, res) => {
     };
 
     session = await dbUpdateGameSession(session);
+
+    //user was passed, let's update scores
+    if(body.user) {
+        let dbsession = await dbGetGameSession(session);
+        //save scores only if we played a little bit (have 6 or more pings)
+        if(dbsession && dbsession.pings > 5) {
+            session.user = body.user;
+            session = await dbUpdateGameScores(session);
+            if (!session.updated) {
+                session = await dbCreateGameScores(session);
+            }
+        }
+    }
+
     session = await dbPreliminaryRankGameScore(session);
     if(!session.rank) {
         session = await dbLowestRankGameScore(session);
@@ -187,7 +227,10 @@ const finishSession = async (req, res, next) => {
     };
 
     session = await dbUpdateGameSession(session);
-    session = await dbCreateGameScores(session);
+    session = await dbUpdateGameScores(session);
+    if (!session.updated) {
+        session = await dbCreateGameScores(session);
+    }
     session = await dbRankGameScore(session);
     respond(session,"session_finish_resp", res);
 };

@@ -90,6 +90,15 @@
       "examples": [
         0
       ]
+    },
+    "user": {
+      "$id": "#/properties/user",
+      "type": "string",
+      "title": "User name",
+      "description": "User name who played the game",
+      "examples": [
+        "John"
+      ]
     }
   }
 }

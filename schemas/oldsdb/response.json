@@ -23,8 +23,12 @@
       "default": 0
     },
     "dts": {
-      "type": "object",
-      "format": "date-time"
+      "oneOf": [
+        {"type": "object", "format": "date-time"},
+        {"type": "string",
+        "pattern":  "[0-9]{4}-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-4]):([0-5][0-9]):([0-5][0-9])(.[0-9]+)?"},
+        {"type":  "null"}
+        ]
     },
     "gem_code": {
       "type": "string",
@@ -169,11 +173,34 @@
         "success": {"$ref": "#/definitions/success"},
         "data": {"$ref": "#/definitions/data_"}
       }
+    },
+    "insert_update_": {
+      "type": "object",
+      "required": [
+        "success",
+        "data"
+      ],
+      "properties": {
+        "success": {"$ref": "#/definitions/success"},
+        "data": {"type": "object",
+          "required": ["rows"],
+          "properties":  {"rows" :  {"type": "integer"}}}
+      }
+    },
+    "request_": {
+      "type": "object",
+      "required": [
+        "request_data"
+      ],
+      "properties": {
+        "request_data": {"$ref": "#/definitions/data_"}
+      }
     }
   },
   "oneOf": [
-    {"$ref":  "#/definitions/response_"},
-    {"$ref":  "#/definitions/data_"}
+    {"$ref":  "#/definitions/response_"}
+    ,{"$ref":  "#/definitions/request_"}
+    ,{"$ref":  "#/definitions/insert_update_"}
   ]
 
 

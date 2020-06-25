@@ -1,7 +1,7 @@
 {
-  "workers": "WORKERS",
-  "jobs":  "JOBS",
-  "gem_list": "GEM_LIST",
-  "timings": "TIMINGS",
-  "gems": "GEMS"
+  "workers": {"name": "WORKERS", "auto": [], "keys": [], "nulls":  []},
+  "jobs":  {"name": "JOBS", "auto": [], "keys": [], "nulls":  []},
+  "gem_list": {"name": "GEM_LIST", "auto": [], "keys": [], "nulls":  []},
+  "timings": {"name": "TIMINGS", "auto": [], "keys": [], "nulls":  []},
+  "gems": {"name": "GEMS", "auto": [], "keys": [], "nulls":  []}
 }

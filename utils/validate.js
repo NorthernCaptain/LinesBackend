@@ -9,7 +9,6 @@ const loadSchema = (path) => {
 };
 
 const getSchema = (name) => {
-console.log('---', name)
     return jsonv.getSchema(name).schema
 };
 
@@ -19,7 +18,6 @@ const addSchema = (name, path, jsonv) => {
 };
 
 const validate = (data, schemaName) => {
-console.log(data)
     if(!jsonv.validate(schemaName, data)) {
         throw new ClientError(jsonv.errorsText());
     }
@@ -35,14 +33,8 @@ const initValidators = () => {
     addSchema('top_scores_resp', 'top_scores_resp.json', jsonv);
     addSchema('top_scores_req', 'top_scores_req.json', jsonv);
 
-
-    addSchema('workers_resp', 'oldsdb/workers_resp.json', jsonv);
-    addSchema('jobs_resp', 'oldsdb/jobs_resp.json', jsonv);
-    addSchema('gem_list_resp', 'oldsdb/gem_list_resp.json', jsonv);
-    addSchema('gems_resp', 'oldsdb/gems_resp.json', jsonv);
-    addSchema('timings_resp', 'oldsdb/timings_resp.json', jsonv);
-
     addSchema('get_req', 'oldsdb/get_req.json', jsonv);
+    addSchema('response', 'oldsdb/response.json', jsonv);
 };
 
 exports.jsonv = jsonv;

@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://us.navalclash.com/schemas/oldsdb/get_req.json",
   "type": "object",
   "title": "/oldsdb/{table} GET server request",

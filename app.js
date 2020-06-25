@@ -19,7 +19,9 @@ app.use(function(req, res, next) {
     next();
 });
 
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
+app.use(bodyParser.text());
 app.use(express.static('public'));
 
 // request: curl -X POST http://localhost:10080/session -H "Content-Type: application/json" -d '{"version":"0.5.1"}'

@@ -1,0 +1,208 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://us.navalclash.com/schemas/oldsdb/response.json",
+  "title": "/oldsdb endpoint",
+  "description": "Server response or POST/PUT request for /oldsdb endpoint",
+  "default": {},
+
+  "definitions": {
+    "success": {
+      "type": "boolean",
+      "title": "Operation success result",
+      "description": "Indicates successful result or not (true/false)",
+      "default": false
+    },
+    "dbid": {
+      "type": "integer",
+      "title": "dbid",
+      "default": false
+    },
+    "cnt": {
+      "type": "integer",
+      "title": "quantity",
+      "default": 0
+    },
+    "dts": {
+      "oneOf": [
+        {"type": "object", "format": "date-time"},
+        {"type": "string",
+        "pattern":  "[0-9]{4}-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-4]):([0-5][0-9]):([0-5][0-9])(.[0-9]+)?"},
+        {"type":  "null"}
+        ]
+    },
+    "gem_code": {
+      "type": "string",
+      "title": "Gem code",
+      "description": "Gem short code",
+      "default": false
+    },
+    "name": {
+      "type": "string",
+      "title": "Name",
+      "description": "Full name",
+      "default": false
+    },
+    "description": {
+      "type": "string",
+      "title": "description",
+      "description": "Description",
+      "default": ""
+    },
+    "jobid": {
+      "type": "string",
+      "title": "jobid",
+      "description": "D4D job id",
+      "default": ""
+    },
+    "jobstatus": {
+      "type": "string",
+      "enum": ["Active", "Finished", "Waiting"],
+      "title": "job_status",
+      "description": "job status",
+      "default": "Waiting"
+    },
+    "jobtype": {
+      "type": "string",
+      "enum": ["New", "Continued"],
+      "title": "job_type",
+      "description": "job type",
+      "default": "New"
+    },
+
+    "gem_list_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "GEM_LIST table",
+      "required": ["id", "code", "name"],
+      "properties": {
+        "id": {"$ref": "#/definitions/dbid"},
+        "code": {"$ref": "#/definitions/gem_code"},
+        "name": {"$ref": "#/definitions/name"}
+      }
+    },
+    "workers_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "WORKERS table",
+      "required": ["id", "name", "description"],
+      "properties": {
+        "id": {"$ref": "#/definitions/dbid"},
+        "name": {"$ref": "#/definitions/name"},
+        "description": {"$ref": "#/definitions/description"}
+      }
+    },
+    "jobs_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "JOBS table",
+      "required": [
+          "id",
+          "jobid",
+          "workerid",
+          "client",
+          "description",
+          "startdts",
+          "enddts",
+          "jobstatus",
+          "jobtype"
+        ],
+      "properties": {
+        "id": {"$ref": "#/definitions/dbid"},
+        "jobid": {"$ref": "#/definitions/jobid"},
+        "workerid": {"$ref": "#/definitions/dbid"},
+        "client": {"$ref": "#/definitions/name"},
+        "description": {"$ref": "#/definitions/description"},
+        "startdts": {"$ref": "#/definitions/dts"},
+        "enddts": {"$ref": "#/definitions/dts"},
+        "jobstatus": {"$ref": "#/definitions/jobstatus"},
+        "jobtype": {"$ref": "#/definitions/jobtype"}
+      }
+    },
+    "timings_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "TIMINGS table",
+      "required": [
+          "jobid",
+          "workerid",
+          "startdts",
+          "enddts"
+        ],
+      "properties": {
+        "jobid": {"$ref": "#/definitions/dbid"},
+        "workerid": {"$ref": "#/definitions/dbid"},
+        "startdts": {"$ref": "#/definitions/dts"},
+        "enddts": {"$ref": "#/definitions/dts"}
+      }
+    },
+    "gems_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "GEMS table",
+      "required": ["id", "jobid", "gemid", "cnt", "dts"],
+      "properties": {
+        "id": {"$ref": "#/definitions/dbid"},
+        "jobid": {"$ref": "#/definitions/dbid"},
+        "gemid": {"$ref": "#/definitions/dbid"},
+        "cnt": {"$ref": "#/definitions/cnt"},
+        "dts": {"$ref": "#/definitions/dts"}
+      }
+    },
+
+    "data_": {
+      "type": "array",
+      "title": "Response result data",
+      "description": "Result object containing server set data",
+      "additionalProperties": false,
+      "oneOf": [
+        {"items": {"$ref": "#/definitions/gem_list_row"}},
+        {"items": {"$ref": "#/definitions/workers_row"}},
+        {"items": {"$ref": "#/definitions/jobs_row"}},
+        {"items": {"$ref": "#/definitions/gems_row"}},
+        {"items": {"$ref": "#/definitions/timings_row"}}
+      ]
+    },
+
+    "response_": {
+      "type": "object",
+      "required": [
+        "success",
+        "data"
+      ],
+      "properties": {
+        "success": {"$ref": "#/definitions/success"},
+        "data": {"$ref": "#/definitions/data_"}
+      }
+    },
+    "insert_update_": {
+      "type": "object",
+      "required": [
+        "success",
+        "data"
+      ],
+      "properties": {
+        "success": {"$ref": "#/definitions/success"},
+        "data": {"type": "object",
+          "required": ["rows"],
+          "properties":  {"rows" :  {"type": "integer"}}}
+      }
+    },
+    "request_": {
+      "type": "object",
+      "required": [
+        "request_data"
+      ],
+      "properties": {
+        "request_data": {"$ref": "#/definitions/data_"}
+      }
+    }
+  },
+  "oneOf": [
+    {"$ref":  "#/definitions/response_"}
+    ,{"$ref":  "#/definitions/request_"}
+    ,{"$ref":  "#/definitions/insert_update_"}
+  ]
+
+
+
+}

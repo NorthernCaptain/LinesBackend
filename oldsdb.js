@@ -131,6 +131,10 @@ const getRecords = async (req, res) => {
     catch (ex) {
         throw new ServerError(ex, values);
         }
+    if (data.length == 0){
+        data.push(null);
+        }
+
     respond(data, resp_schema, res);
     console.log(`  Success: ${data.length}`)
 };

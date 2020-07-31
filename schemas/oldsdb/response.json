@@ -149,7 +149,23 @@
       }
     },
 
+
     "data_": {
+      "type": "array",
+      "title": "Response result data",
+      "description": "Result object containing server set data",
+      "additionalProperties": false,
+      "minitems": 0,
+      "oneOf": [
+        {"items": {"$ref": "#/definitions/gem_list_row"}},
+        {"items": {"$ref": "#/definitions/workers_row"}},
+        {"items": {"$ref": "#/definitions/jobs_row"}},
+        {"items": {"$ref": "#/definitions/gems_row"}},
+        {"items": {"$ref": "#/definitions/timings_row"}},
+        {"items": {"type": "null"}}
+      ]
+    },
+    "data__": {
       "type": "array",
       "title": "Response result data",
       "description": "Result object containing server set data",
@@ -193,7 +209,7 @@
         "request_data"
       ],
       "properties": {
-        "request_data": {"$ref": "#/definitions/data_"}
+        "request_data": {"$ref": "#/definitions/data__"}
       }
     }
   },

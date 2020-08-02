@@ -5,27 +5,32 @@ let httpServers = [];
 const githubPushEvent = async (req, res) => {
     console.log("Got github push event", req.body);
 
-    const ls = spawn("/home/leo/bin/autoupdate.sh", []);
+    if(req.body.ref === "refs/heads/master"
+        && req.body.repository && req.body.repository.full_name === "NorthernCaptain/LinesBackend") {
 
-    ls.stdout.on("data", data => {
-        console.log(`1 autoupdate: ${data}`);
-    });
+        console.log("Starting auto-update process");
+        const ls = spawn("/home/leo/bin/autoupdate.sh", []);
 
-    ls.stderr.on("data", data => {
-        console.log(`2 autoupdate: ${data}`);
-    });
+        ls.stdout.on("data", data => {
+            console.log(`1 autoupdate: ${data}`);
+        });
 
-    ls.on('error', (error) => {
-        console.log(`error autoupdate: ${error.message}`);
-    });
+        ls.stderr.on("data", data => {
+            console.log(`2 autoupdate: ${data}`);
+        });
 
-    ls.on("close", code => {
-        console.log(`autoupdate child process exited with code ${code}`);
-        console.log(`Closing ${httpServers.length} active servers`);
-        for(let srv of httpServers) {
-            srv.close()
-        }
-    });
+        ls.on('error', (error) => {
+            console.log(`error autoupdate: ${error.message}`);
+        });
+
+        ls.on("close", code => {
+            console.log(`autoupdate child process exited with code ${code}`);
+            console.log(`Closing ${httpServers.length} active servers`);
+            for (let srv of httpServers) {
+                srv.close()
+            }
+        });
+    }
 
     res.json({ success: true});
 };

@@ -29,6 +29,7 @@ const githubPushEvent = async (req, res) => {
             for (let srv of httpServers) {
                 srv.close()
             }
+            process.exit(0)
         });
     }
 

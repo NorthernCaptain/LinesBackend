@@ -23,7 +23,7 @@ const githubPushEvent = async (req, res) => {
         console.log(`autoupdate child process exited with code ${code}`);
         console.log(`Closing ${httpServers.length} active servers`);
         for(let srv of httpServers) {
-            src.close()
+            srv.close()
         }
     });
 

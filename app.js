@@ -2,6 +2,7 @@ const {newSession, updateSession, finishSession, topGameScores} = require('./ses
 const {initValidators} = require('./utils/validate');
 const {getRecords, newRecords, updateRecord, initValidatorsOlds} = require('./oldsdb');
 const {expressErrorHandler} = require('./errors');
+const {setServers, githubPushEvent} = require('./utils/rebuild');
 const express = require('express');
 const fs = require('fs');
 const https = require('https');
@@ -46,6 +47,8 @@ app.post('/oldsdb/:tbl', wrap(newRecords));
 
 app.put('/oldsdb/:tbl', wrap(updateRecord));
 
+app.post('/update/on/push', wrap(githubPushEvent));
+
 app.use(expressErrorHandler);
 
 initValidators();
@@ -62,4 +65,6 @@ httpsServer.listen(8443, '0.0.0.0', (err) => {
         console.log(`Server 1.2.0 started, UID is now ${process.getuid ? process.getuid() : ''}`);
 });
 
-app.listen(10080, '0.0.0.0');
+const httpServer = app.listen(10080, '0.0.0.0');
+
+setServers([httpServer, httpsServer]);

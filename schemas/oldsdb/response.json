@@ -68,7 +68,13 @@
       "description": "job type",
       "default": "New"
     },
-
+    "opt": {
+      "type": "string",
+      "enum": ["ini", "job", "ret"],
+      "title": "gem_opt",
+      "description": "gem operation type",
+      "default": "job"
+    },
     "gem_list_row": {
       "type": "object",
       "additionalProperties": false,
@@ -139,16 +145,16 @@
       "type": "object",
       "additionalProperties": false,
       "description": "GEMS table",
-      "required": ["id", "jobid", "gemid", "cnt", "dts"],
+      "required": ["id", "jobid", "gemid", "cnt", "dts", "opt"],
       "properties": {
         "id": {"$ref": "#/definitions/dbid"},
         "jobid": {"$ref": "#/definitions/dbid"},
         "gemid": {"$ref": "#/definitions/dbid"},
         "cnt": {"$ref": "#/definitions/cnt"},
+        "opt": {"$ref": "#/definitions/opt"},
         "dts": {"$ref": "#/definitions/dts"}
       }
     },
-
 
     "data_": {
       "type": "array",

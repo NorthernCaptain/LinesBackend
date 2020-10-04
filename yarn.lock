@@ -30,6 +30,11 @@ array-flatten@1.1.1:
   resolved "https://registry.yarnpkg.com/array-flatten/-/array-flatten-1.1.1.tgz#9a5f699051b1e7073328f2a008968b64ea2955d2"
   integrity sha1-ml9pkFGx5wczKPKgCJaLZOopVdI=
 
+basic-auth@~0.0.1:
+  version "0.0.1"
+  resolved "https://registry.yarnpkg.com/basic-auth/-/basic-auth-0.0.1.tgz#31ddb65843f6c35c6fea7beb46a987cb8ce18924"
+  integrity sha1-Md22WEP2w1xv6nvrRqmHy4zhiSQ=
+
 bignumber.js@9.0.0:
   version "9.0.0"
   resolved "https://registry.yarnpkg.com/bignumber.js/-/bignumber.js-9.0.0.tgz#805880f84a329b5eac6e7cb6f8274b6d82bdf075"
@@ -97,6 +102,11 @@ core-util-is@~1.0.0:
   version "1.0.2"
   resolved "https://registry.yarnpkg.com/core-util-is/-/core-util-is-1.0.2.tgz#b5fd54220aa2bc5ab57aab7140c940754503c1a7"
   integrity sha1-tf1UIgqivFq1eqtxQMlAdUUDwac=
+
+crypto@^1.0.1:
+  version "1.0.1"
+  resolved "https://registry.yarnpkg.com/crypto/-/crypto-1.0.1.tgz#2af1b7cad8175d24c8a1b0778255794a21803037"
+  integrity sha512-VxBKmeNcqQdiUQUW2Tzq0t377b54N2bMtXO/qiLa+6eRRmmC4qT3D4OnTGoT/U6O9aklQ/jTwbOtRMTTY8G0Ig==
 
 dasherize@2.0.0:
   version "2.0.0"
@@ -417,6 +427,13 @@ nocache@2.1.0:
   version "2.1.0"
   resolved "https://registry.yarnpkg.com/nocache/-/nocache-2.1.0.tgz#120c9ffec43b5729b1d5de88cd71aa75a0ba491f"
   integrity sha512-0L9FvHG3nfnnmaEQPjT9xhfN4ISk0A8/2j4M37Np4mcDesJjHgEUfgPhdCyZuFI954tjokaIj/A3NdpFNdEh4Q==
+
+node-oauth2-server@^2.4.0:
+  version "2.4.0"
+  resolved "https://registry.yarnpkg.com/node-oauth2-server/-/node-oauth2-server-2.4.0.tgz#2893eb0c118c3f05fc7fbeace4a33e3bf4ec69de"
+  integrity sha1-KJPrDBGMPwX8f76s5KM+O/Tsad4=
+  dependencies:
+    basic-auth "~0.0.1"
 
 on-finished@~2.3.0:
   version "2.3.0"

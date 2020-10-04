@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://lines.navalclash.com/schemas/session_new_resp.json",
   "type": "object",
   "title": "/session - new session server response",

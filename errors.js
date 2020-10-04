@@ -25,6 +25,9 @@ class ClientError extends ApiError {
 }
 
 expressErrorHandler = (error, req, res, next) => {
+    if(error.name === 'OAuth2Error') {
+        res.status(401).json({success: false, error: error.message, auth: error.message && error.message.includes('expired') ? 'expired' : 'denied'});
+    } else
     if(error instanceof ApiError) {
         res.status(error.httpCode).json(error.json());
     } else {

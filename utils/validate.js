@@ -35,6 +35,9 @@ const initValidators = () => {
 
     addSchema('get_req', 'oldsdb/get_req.json', jsonv);
     addSchema('response', 'oldsdb/response.json', jsonv);
+
+    addSchema('register_user_req', 'auth/register_user_req.json', jsonv);
+    addSchema('register_user_resp', 'auth/register_user_resp.json', jsonv);
 };
 
 exports.jsonv = jsonv;

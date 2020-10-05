@@ -78,9 +78,9 @@ const tableColumns = (table, schema) => {
     return columns.join(', ');
 }
 
-let tables = [];
+let tables = {};
 getTables().then(res => {tables = res;});
 
-exports.tables = tables;
+exports.getTables = () => { return tables;};
 exports.tableColumns = tableColumns;
 exports.dbRunSQL = dbRunSQL;

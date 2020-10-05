@@ -1,7 +1,7 @@
 const {ServerError, ClientError} = require('../errors');
 const {validate} = require('../utils/validate.js');
 const {respond} = require('../utils/respond.js');
-const {dbRunSQL, tableColumns, tables} = require('../db/oldsdb');
+const {dbRunSQL, tableColumns, getTables} = require('../db/oldsdb');
 
 const resp_schema = "response";
 const req_schema = "get_req";
@@ -18,6 +18,7 @@ const inArray = (arr, obj) => {
 
 const getRecords = async (req, res) => {
     let table = req.params.tbl.toLowerCase();
+    let tables = getTables();
     let table_name = tables[table].name;
     if ( !table_name ) {
         throw new ServerError('Oooops!!!');
@@ -57,6 +58,7 @@ const newRecords = async (req, res) => {
     let table = req.params.tbl ? req.params.tbl.toLowerCase() : "notable";
     console.log(`New POST request - ${table}\n    ${JSON.stringify(data)}`);
     let table_name;
+    let tables = getTables();
     try {
         table_name = tables[table].name;
         }
@@ -118,6 +120,8 @@ const updateRecord = async (req, res) => {
     let table = req.params.tbl ? req.params.tbl.toLowerCase() : "notable";
     console.log(`New PUT request - ${table}\n    ${JSON.stringify(data)}`);
     let table_name;
+    let tables = getTables();
+
     try {
         table_name = tables[table].name;
         }

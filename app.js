@@ -36,7 +36,7 @@ app.use(bodyParser.text());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 app.use(app.oauth.errorHandler());
-app.use('/olds', oldsRouterFunc(app));
+app.use('/oldsdb', oldsRouterFunc(app));
 app.use('/', linesRouterFunc(app));
 app.use('/auth', authRouterFunc(app));
 

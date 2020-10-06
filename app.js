@@ -23,12 +23,12 @@ app.oauth = oAuth2Server({
 
 app.use(helmet());
 //redirect all http traffic to https
-// app.use(function(req, res, next) {
-//     if(!req.secure) {
-//         return res.redirect(['https://', req.get('Host'), req.baseUrl].join(''));
-//     }
-//     next();
-// });
+app.use(function(req, res, next) {
+    if(!req.secure) {
+        return res.redirect(['https://', req.get('Host'), req.baseUrl].join(''));
+    }
+    next();
+});
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());

@@ -5,9 +5,9 @@ const {getRecords, newRecords, updateRecord} = require('../services/oldsService'
 const router = express.Router();
 
 const setup = (app) => {
-    router.get('/:tbl', wrap(getRecords));
-    router.post('/:tbl', wrap(newRecords));
-    router.put('/:tbl', wrap(updateRecord));
+    router.get('/:tbl', app.oauth.authorise(), wrap(getRecords));
+    router.post('/:tbl', app.oauth.authorise(), wrap(newRecords));
+    router.put('/:tbl', app.oauth.authorise(), wrap(updateRecord));
 
     return router;
 };

@@ -155,7 +155,21 @@
         "dts": {"$ref": "#/definitions/dts"}
       }
     },
-
+    "gaps_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "GAPS table",
+      "required": [
+          "id",
+          "startdts",
+          "enddts"
+        ],
+      "properties": {
+        "id": {"$ref": "#/definitions/dbid"},
+        "startdts": {"$ref": "#/definitions/dts"},
+        "enddts": {"$ref": "#/definitions/dts"}
+      }
+    },
     "data_": {
       "type": "array",
       "title": "Response result data",
@@ -168,6 +182,7 @@
         {"items": {"$ref": "#/definitions/jobs_row"}},
         {"items": {"$ref": "#/definitions/gems_row"}},
         {"items": {"$ref": "#/definitions/timings_row"}},
+        {"items": {"$ref": "#/definitions/gaps_row"}},
         {"items": {"type": "null"}}
       ]
     },
@@ -181,7 +196,8 @@
         {"items": {"$ref": "#/definitions/workers_row"}},
         {"items": {"$ref": "#/definitions/jobs_row"}},
         {"items": {"$ref": "#/definitions/gems_row"}},
-        {"items": {"$ref": "#/definitions/timings_row"}}
+        {"items": {"$ref": "#/definitions/timings_row"}},
+        {"items": {"$ref": "#/definitions/gaps_row"}}
       ]
     },
 

@@ -135,6 +135,21 @@
         "startdts": {"$ref": "#/definitions/dts"}
       },
       "additionalProperties": false
+    },
+    {
+      "anyOf": [
+        {"required": ["GAPS"]},
+        {"required": ["GAPS","id"]},
+        {"required": ["GAPS","startdts"]},
+        {"required": ["GAPS","enddts"]}
+      ],
+      "properties": {
+        "GAPS": {"$ref": "#/definitions/table"},
+        "id": {"$ref": "#/definitions/id"},
+        "startdts": {"$ref": "#/definitions/dts"},
+        "enddts": {"$ref": "#/definitions/dts"}
+      },
+      "additionalProperties": false
     }
   ]
 

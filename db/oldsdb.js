@@ -57,10 +57,15 @@ const getTables = async () => {
     let tables = loadSchema('oldsdb/tables.json')
     let columns = await getColumns()
     for (let n in columns){
-        let key_ = Object.keys(tables).find(key => tables[key].name === columns[n].tbl);
-        if (columns[n].auto) { tables[key_].auto.push(columns[n].col.toLowerCase())};
-        if (columns[n]["key"]) {tables[key_].keys.push(columns[n].col.toLowerCase())};
-        if (columns[n].null) {tables[key_].nulls.push(columns[n].col.toLowerCase())};
+        let column = columns[n];
+        let table =  tables[column.tbl.toLowerCase()];
+        if (typeof table === 'undefined') {
+            console.error(`No table ${column.tbl} found in tables.json` )
+        } else {
+            if (column.auto) {table.auto.push(column.col.toLowerCase())};
+            if (column.key) {table.keys.push(column.col.toLowerCase())};
+            if (column.null) {table.nulls.push(column.col.toLowerCase())};
+        }
     }
     return tables
 };

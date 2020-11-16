@@ -58,18 +58,15 @@ const getTables = async () => {
     let columns = await getColumns()
     for (let n in columns){
         let column = columns[n];
-        if (typeof tables[column.tbl.toLowerCase()] === 'undefined') {
+        let table =  tables[column.tbl.toLowerCase()];
+        if (typeof table === 'undefined') {
             console.error(`No table ${column.tbl} found in tables.json` )
         } else {
-            let key_ = Object.keys(tables).find(key => tables[key].name === column.tbl);
-            let table = tables[key_];
-            if (column.auto) { table.auto.push(column.col.toLowerCase())};
+            if (column.auto) {table.auto.push(column.col.toLowerCase())};
             if (column.key) {table.keys.push(column.col.toLowerCase())};
             if (column.null) {table.nulls.push(column.col.toLowerCase())};
         }
-
     }
-     console.log(tables);
     return tables
 };
 

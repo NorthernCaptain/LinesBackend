@@ -31,6 +31,7 @@ expressErrorHandler = (error, req, res, next) => {
     if(error instanceof ApiError) {
         res.status(error.httpCode).json(error.json());
     } else {
+        console.log(error);
         res.status(500).json({
             success: false,
             error: error.message ? error.message : error.toString()

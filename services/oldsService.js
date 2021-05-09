@@ -99,9 +99,7 @@ const getResults = async (req, res) => {
             return;
             }
         jobs = jobs.join();
-        console.log(sqlIds(ids));
         jobs = await dbRunSQL(sqlIds(ids));
-//        jobs = jobs? jobs: []
         }
     catch (ex) {
         throw new ServerError(ex, [workerId, start, end]);

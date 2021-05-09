@@ -106,8 +106,8 @@ const getResults = async (req, res) => {
         }
 
     jobs.forEach(job => {
-        job.gems = gems.filter(time => time.jobID === job.id).map(z => (({jobID, ...rest} = z) => (rest))())
-        job.times = timings.filter(time => time.jobID === job.id).map(z => (({jobID, ...rest} = z) => (rest))())
+        job.gems = gems.filter(time => time.jobID === job.id).map(({jobID, ...rest}) => rest)
+        job.times = timings.filter(time => time.jobID === job.id).map(({jobID, ...rest}) => rest)
         })
     respond(jobs, 'skip', res);
 

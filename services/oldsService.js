@@ -17,7 +17,7 @@ const inArray = (arr, obj) => {
 
 const sqlTime = (workerId, start, end) => `
     SELECT
-        IFNULL(x.jobID, -100) as jobID,
+        jobID,
         secs,
         hours,
         time
@@ -36,13 +36,13 @@ const sqlTime = (workerId, start, end) => `
         JOIN JOBS j
         ON t.jobID=j.id
     WHERE t.workerID=${workerId} AND t.startDTS>='${start}' AND t.startDTS<'${end}'
-    GROUP BY t.jobID -- WITH ROLLUP
-    ) as x LEFT JOIN oldsdb.JOBS j on j.id=x.jobID;
+    GROUP BY t.jobID
+    ) as x ;
 `;
 
 const sqlGems = (workerId, start, end) => `
     SELECT
-        IFNULL(jobID, -100) as jobID,
+        jobID,
         code,
         name,
         cnt
@@ -56,11 +56,10 @@ const sqlGems = (workerId, start, end) => `
         JOIN JOBS j on j.id=g.jobID
     WHERE g.opt = 'job' AND j.workerID = ${workerId} and g.DTS>='${start}' AND g.DTS<'${end}'
     GROUP BY  g.jobID, l.code, l.name
-       -- WITH ROLLUP
     ) as x WHERE code is not NULL and name is not NULL
         OR jobID is NULL and code is NULL and name is NULL
         OR jobID is not NULL and code is NULL and name is NULL
-    ORDER BY jobID, IFNULL(code,"Z");
+    ORDER BY jobID;
 `;
 
 const sqlIds = (ids) => `
@@ -78,6 +77,9 @@ const sqlIds = (ids) => `
 
 
 const getResults = async (req, res) => {
+//    const regx = new RegExp("(?<=Bearer )[a-fA-F0-9]+")
+//    const token = regx.exec(req.get("Authorization"))[0]
+
     let workerId = req.params.workerId;
     let start = req.query.start;
     let end = req.query.end;
@@ -98,8 +100,7 @@ const getResults = async (req, res) => {
             respond([], 'skip', res);
             return;
             }
-        jobs = jobs.join();
-        jobs = await dbRunSQL(sqlIds(ids));
+        jobs = await dbRunSQL(sqlIds(ids.join()));
         }
     catch (ex) {
         throw new ServerError(ex, [workerId, start, end]);

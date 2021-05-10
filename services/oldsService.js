@@ -15,6 +15,105 @@ const inArray = (arr, obj) => {
     return false
 }
 
+const sqlTime = (workerId, start, end) => `
+    SELECT
+        jobID,
+        secs,
+        hours,
+        time
+    FROM (
+    SELECT
+        t.jobID,
+        SUM(UNIX_TIMESTAMP(t.endDTS) - UNIX_TIMESTAMP(t.startDTS)) as secs,
+        ROUND(SUM(UNIX_TIMESTAMP(t.endDTS) - UNIX_TIMESTAMP(t.startDTS))/3600,2) as hours,
+            CONCAT(
+                LPAD(SUM(UNIX_TIMESTAMP(t.endDTS) - UNIX_TIMESTAMP(t.startDTS)) DIV 3600 % 60,2, 0),
+                ':',
+                LPAD(SUM(UNIX_TIMESTAMP(t.endDTS) - UNIX_TIMESTAMP(t.startDTS)) % 3600 DIV 60, 2, 0),
+                ':00'
+                ) as time
+    FROM TIMINGS t
+        JOIN JOBS j
+        ON t.jobID=j.id
+    WHERE t.workerID=${workerId} AND t.startDTS>='${start}' AND t.startDTS<'${end}'
+    GROUP BY t.jobID
+    ) as x ;
+`;
+
+const sqlGems = (workerId, start, end) => `
+    SELECT
+        jobID,
+        code,
+        name,
+        cnt
+    FROM (
+    SELECT
+        g.jobID,
+        l.code, l.name,
+        -SUM(g.cnt/10) as cnt
+    FROM GEMS g
+        JOIN GEM_LIST l ON g.gemID=l.id
+        JOIN JOBS j on j.id=g.jobID
+    WHERE g.opt = 'job' AND j.workerID = ${workerId} and g.DTS>='${start}' AND g.DTS<'${end}'
+    GROUP BY  g.jobID, l.code, l.name
+    ) as x WHERE code is not NULL and name is not NULL
+        OR jobID is NULL and code is NULL and name is NULL
+        OR jobID is not NULL and code is NULL and name is NULL
+    ORDER BY jobID;
+`;
+
+const sqlIds = (ids) => `
+    SELECT id,
+        CASE WHEN JobID RLIKE 'D4D' THEN CONCAT('Misc job ', REPLACE(jobID, 'D4D_', '')) ELSE JobID END as jobID,
+        Client,
+        UNIX_TIMESTAMP(StartDTS) as startDTS,
+        UNIX_TIMESTAMP(IFNULL(EndDTS, UpdateDTS)) as endDTS,
+        JobStatus as Status,
+        JobType as Type
+        , SUBSTR(Description, 1, INSTR(Description, '[')-2) as Discription
+        , SUBSTR(Description, INSTR(Description, '[')+1, INSTR(Description, ']') - INSTR(Description, '[') - 1) as Color
+    FROM oldsdb.JOBS where id IN (${ids})
+`;
+
+
+const getResults = async (req, res) => {
+//    const regx = new RegExp("(?<=Bearer )[a-fA-F0-9]+")
+//    const token = regx.exec(req.get("Authorization"))[0]
+
+    let workerId = req.params.workerId;
+    let start = req.query.start;
+    let end = req.query.end;
+    if ( typeof start === 'undefined' || typeof end === 'undefined' ) {
+        throw new ClientError('Missing params');
+        }
+    start += ' 00:00:00';
+    end += ' 23:59:59';
+    let timings = [];
+    let gems = [];
+    let jobs = [];
+    try {
+        timings = await dbRunSQL(sqlTime(workerId, start, end));
+        let ids = timings.map(x => x.jobID);
+        gems = await dbRunSQL(sqlGems(workerId, start, end));
+        ids = [...new Set(ids.concat(gems.map(x => x.jobID)))]
+        if (ids.length === 0){
+            respond([], 'skip', res);
+            return;
+            }
+        jobs = await dbRunSQL(sqlIds(ids.join()));
+        }
+    catch (ex) {
+        throw new ServerError(ex, [workerId, start, end]);
+        }
+
+    jobs.forEach(job => {
+        job.gems = gems.filter(time => time.jobID === job.id).map(({jobID, ...rest}) => rest)
+        job.times = timings.filter(time => time.jobID === job.id).map(({jobID, ...rest}) => rest)
+        })
+    respond(jobs, 'skip', res);
+
+};
+
 
 const getRecords = async (req, res) => {
     let table = req.params.tbl.toLowerCase();
@@ -24,7 +123,7 @@ const getRecords = async (req, res) => {
         throw new ServerError('Oooops!!!');
     }
     let query = req.query;
-    console.log(`New GET - ${table}`)
+    console.log(`\nNew GET - ${table}`)
     validate({...query,...{[table_name]: true}}, req_schema);
 
     let where = [];
@@ -169,3 +268,4 @@ const updateRecord = async (req, res) => {
 exports.newRecords = newRecords;
 exports.updateRecord = updateRecord;
 exports.getRecords = getRecords;
+exports.getResults = getResults;

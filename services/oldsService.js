@@ -296,10 +296,9 @@ const getLoggedUser = async (req, res) => {
 const getUsers = async (req, res) => {
     const user = await who(req);
 
-    if ( user.role === undefined || user.role > 0) {
-        respond([], 'skip', res);
+    if ( user.role === undefined || user.role > 10) {
+        req.query.id = user.id.toString();
         }
-
     req.params.tbl = "users";
     await getRecords(req, res);
 };

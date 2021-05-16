@@ -150,6 +150,15 @@
         "enddts": {"$ref": "#/definitions/dts"}
       },
       "additionalProperties": false
+    },
+    {
+      "anyOf": [
+        {"required": ["users"]}
+      ],
+      "properties": {
+        "users": {"$ref": "#/definitions/table"}
+      },
+      "additionalProperties": false
     }
   ]
 

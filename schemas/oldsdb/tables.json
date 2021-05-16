@@ -4,5 +4,7 @@
   "gem_list": {"name": "GEM_LIST", "auto": [], "keys": [], "nulls":  []},
   "timings": {"name": "TIMINGS", "auto": [], "keys": [], "nulls":  []},
   "gems": {"name": "GEMS", "auto": [], "keys": [], "nulls":  []},
-  "gaps": {"name": "GAPS", "auto": [], "keys": [], "nulls":  []}
+  "gaps": {"name": "GAPS", "auto": [], "keys": [], "nulls":  []},
+  "users": {"name": "users", "auto": [], "keys": [], "nulls":  []},
+  "roles": {"name": "roles", "auto": [], "keys": [], "nulls":  []}
 }

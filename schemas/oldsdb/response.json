@@ -17,6 +17,11 @@
       "title": "dbid",
       "default": false
     },
+    "role": {
+      "type": "integer",
+      "title": "role number",
+      "default": false
+    },
     "cnt": {
       "type": "integer",
       "title": "quantity",
@@ -40,6 +45,12 @@
       "type": "string",
       "title": "Name",
       "description": "Full name",
+      "default": false
+    },
+    "email": {
+      "type": "string",
+      "title": "email",
+      "description": "e-mail",
       "default": false
     },
     "description": {
@@ -170,6 +181,27 @@
         "enddts": {"$ref": "#/definitions/dts"}
       }
     },
+
+    "users_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "users table",
+      "required": [
+          "id",
+          "name",
+          "email",
+          "role",
+          "description"
+        ],
+      "properties": {
+        "id": {"$ref": "#/definitions/dbid"},
+        "name": {"$ref": "#/definitions/name"},
+        "email": {"$ref": "#/definitions/email"},
+        "role": {"$ref": "#/definitions/role"},
+        "description": {"$ref": "#/definitions/description"}
+      }
+    },
+
     "data_": {
       "type": "array",
       "title": "Response result data",
@@ -183,6 +215,7 @@
         {"items": {"$ref": "#/definitions/gems_row"}},
         {"items": {"$ref": "#/definitions/timings_row"}},
         {"items": {"$ref": "#/definitions/gaps_row"}},
+        {"items": {"$ref": "#/definitions/users_row"}},
         {"items": {"type": "null"}}
       ]
     },

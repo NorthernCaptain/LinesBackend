@@ -116,28 +116,30 @@ const getResults = async (req, res) => {
 
 
 const getRecords = async (req, res) => {
-    let table = req.params.tbl.toLowerCase();
-    let tables = getTables();
-    let table_name = tables[table].name;
+
+    await dbRunSQL("CALL oldsdb.update_v2();");
+    const table = req.params.tbl.toLowerCase();
+    const tables = getTables();
+    const table_name = tables[table].name;
     if ( !table_name ) {
         throw new ServerError('Oooops!!!');
     }
-    let query = req.query;
+    const query = req.query;
     console.log(`\nNew GET - ${table}`)
     validate({...query,...{[table_name]: true}}, req_schema);
 
-    let where = [];
-    let params = [];
+    var where = [];
+    var params = [];
 
-    for ( let key in query ) {
+    for ( var key in query ) {
         where.push(`${key} = ?`);
         params.push(query[key]);
     }
 
-    let limit_ = where.length == 0 ? 'LIMIT 100' : ''
+    const limit_ = where.length == 0 ? 'LIMIT 100' : ''
     where = where.length > 0 ? 'WHERE ' + where.join(' AND ') : ''
-    let sql = `SELECT ${tableColumns(table)} FROM ${table_name} ${where} ${limit_};`
-    let data = [];
+    const sql = `SELECT ${tableColumns(table)} FROM ${table_name} ${where} ${limit_};`
+    var data = [];
     try {
         data = await dbRunSQL(sql, params);
         }
@@ -265,7 +267,47 @@ const updateRecord = async (req, res) => {
         console.log(`  Success: ${changed}`)
 };
 
+
+
+// V2
+
+const who = async (req) => {
+    const regx = new RegExp("(?<=Bearer )[a-fA-F0-9]+")
+    const token = regx.exec(req.get("Authorization"))[0];
+
+    if ( typeof token === 'undefined') {
+        return {};
+        }
+    const sql = `SELECT id, name, email, role, description FROM oldsdb.users WHERE token = '${token}';`
+    const user = await dbRunSQL(sql);
+    return user[0];
+    }
+
+const getLoggedUser = async (req, res) => {
+    try {
+        const user = await who(req);
+        respond(user, 'skip', res);
+        }
+    catch (ex) {
+        throw new ServerError(ex, [token]);
+        }
+};
+
+const getUsers = async (req, res) => {
+    const user = await who(req);
+
+    if ( user.role === undefined || user.role > 0) {
+        respond([], 'skip', res);
+        }
+
+    req.params.tbl = "users";
+    await getRecords(req, res);
+};
+
+
 exports.newRecords = newRecords;
 exports.updateRecord = updateRecord;
 exports.getRecords = getRecords;
 exports.getResults = getResults;
+exports.getLoggedUser = getLoggedUser;
+exports.getUsers = getUsers;

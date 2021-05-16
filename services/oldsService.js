@@ -273,12 +273,12 @@ const updateRecord = async (req, res) => {
 
 const who = async (req) => {
     const regx = new RegExp("(?<=Bearer )[a-fA-F0-9]+")
-    const token = regx.exec(req.get("Authorization"))[0];
+    const token = regx.exec(req.get("Authorization"));
 
-    if ( typeof token === 'undefined') {
+    if ( !token || typeof token[0] === 'undefined') {
         return {};
         }
-    const sql = `SELECT id, name, email, role, description FROM oldsdb.users WHERE token = '${token}';`
+    const sql = `SELECT id, name, email, role, description FROM oldsdb.users WHERE token = '${token[0]}';`
     const user = await dbRunSQL(sql);
     return user[0];
     }

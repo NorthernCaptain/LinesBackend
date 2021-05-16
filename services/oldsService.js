@@ -265,7 +265,49 @@ const updateRecord = async (req, res) => {
         console.log(`  Success: ${changed}`)
 };
 
+
+
+// V2
+
+const who = async (req) => {
+    const regx = new RegExp("(?<=Bearer )[a-fA-F0-9]+")
+    const token = regx.exec(req.get("Authorization"))[0];
+
+    if ( typeof token === 'undefined') {
+        return {};
+        }
+    const sql = `SELECT id, name, email, role, description FROM oldsdb.users WHERE token = '${token}';`
+    const user = await dbRunSQL(sql);
+    return user[0];
+    }
+
+const getLoggedUser = async (req, res) => {
+    try {
+        const user = await who(req);
+        respond(user, 'skip', res);
+        }
+    catch (ex) {
+        throw new ServerError(ex, [token]);
+        }
+};
+
+
+
+const getUsers = async (req, res) => {
+    const user = await who(req);
+
+    if (user.role > 0) {
+        respond([], 'skip', res);
+        }
+
+    req.params.tbl = "users";
+    await getRecords(req, res);
+};
+
+
 exports.newRecords = newRecords;
 exports.updateRecord = updateRecord;
 exports.getRecords = getRecords;
 exports.getResults = getResults;
+exports.getLoggedUser = getLoggedUser;
+exports.getUsers = getUsers;

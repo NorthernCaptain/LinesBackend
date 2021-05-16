@@ -291,12 +291,10 @@ const getLoggedUser = async (req, res) => {
         }
 };
 
-
-
 const getUsers = async (req, res) => {
     const user = await who(req);
 
-    if (user.role > 0) {
+    if ( user.role === undefined || user.role > 0) {
         respond([], 'skip', res);
         }
 

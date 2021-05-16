@@ -258,6 +258,8 @@ BEGIN
 END $$
 
 
+
+GRANT EXECUTE  ON procedure update_v2 TO 'gem_api'@'%';
 ----------------------------------------------------------------------
 
 CALL oldsdb.update_v2();

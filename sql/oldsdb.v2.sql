@@ -265,8 +265,8 @@ GRANT EXECUTE  ON procedure update_v2 TO 'gem_api'@'%';
 CALL oldsdb.update_v2();
 
 ------------------------
-DROP VIEW IF EXISTS oldsdb.users
-CREATE VIEW oldsdb.users
+DROP VIEW IF EXISTS oldsdb.whois;
+CREATE VIEW oldsdb.whois
 AS
     SELECT w.id,
         w.name,
@@ -274,7 +274,6 @@ AS
         w.role,
         w.description,
         t.token
-
     FROM
         oldsdb.workers w
     JOIN
@@ -286,13 +285,31 @@ AS
     JOIN
         authdb.access_tokens t
         ON t.user_id=u.user_id
-    WHERE t.expires_at >= CURRENT_TIMESTAMP- INTERVAL 1 DAY
+    WHERE t.expires_at >= CURRENT_TIMESTAMP- INTERVAL 10 DAY;
+
+
+DROP VIEW IF EXISTS oldsdb.users;
+CREATE VIEW oldsdb.users
+AS
+    SELECT id,
+        name,
+        email,
+        role,
+        description
+    FROM
+        oldsdb.whois
+    GROUP BY id,
+        name,
+        email,
+        role,
+        description;
+
 
 --------------------------------------------------------
 
 -- WHO
 SELECT id, name, email, role, description FROM oldsdb.users
-WHERE token = 'e632a2623c99e8128377b3f9ee556dacafca2b53'
+WHERE token = '1b3934910b58124de96a1e2667641735d3413cae';
 
 
 ------------------------------------------

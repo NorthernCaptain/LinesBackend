@@ -153,10 +153,12 @@
     },
     {
       "anyOf": [
-        {"required": ["users"]}
+        {"required": ["users"]},
+        {"required": [ "id", "users"]}
       ],
       "properties": {
-        "users": {"$ref": "#/definitions/table"}
+        "users": {"$ref": "#/definitions/table"},
+        "id": {"$ref": "#/definitions/id"}
       },
       "additionalProperties": false
     }

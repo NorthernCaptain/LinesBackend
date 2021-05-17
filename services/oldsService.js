@@ -278,7 +278,7 @@ const who = async (req) => {
     if ( !token || typeof token[0] === 'undefined') {
         return {};
         }
-    const sql = `SELECT id, name, email, role, description FROM oldsdb.users WHERE token = '${token[0]}';`
+    const sql = `SELECT id, name, email, role, description FROM oldsdb.whois WHERE token = '${token[0]}';`
     const user = await dbRunSQL(sql);
     return user[0];
     }

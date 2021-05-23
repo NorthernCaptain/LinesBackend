@@ -35,7 +35,7 @@ const sqlTime = (workerId, start, end) => `
     FROM TIMINGS t
         JOIN JOBS j
         ON t.jobID=j.id
-    WHERE t.workerID=${workerId} AND t.startDTS>='${start}' AND t.startDTS<'${end}'
+    WHERE t.workerID=${workerId} AND t.startDTS>='${start}' AND t.startDTS<='${end}'
     GROUP BY t.jobID
     ) as x ;
 `;
@@ -54,7 +54,7 @@ const sqlGems = (workerId, start, end) => `
     FROM GEMS g
         JOIN GEM_LIST l ON g.gemID=l.id
         JOIN JOBS j on j.id=g.jobID
-    WHERE g.opt = 'job' AND j.workerID = ${workerId} and g.DTS>='${start}' AND g.DTS<'${end}'
+    WHERE g.opt = 'job' AND j.workerID = ${workerId} and g.DTS>='${start}' AND g.DTS<='${end}'
     GROUP BY  g.jobID, l.code, l.name
     ) as x WHERE code is not NULL and name is not NULL
         OR jobID is NULL and code is NULL and name is NULL
@@ -77,7 +77,7 @@ const sqlIntervals = (workerId, start, end) => `
                 ':00'
                 ) as time
     FROM TIMINGS t
-    WHERE t.workerID=${workerId} AND t.startDTS>='${start}' AND t.startDTS<'${end}'
+    WHERE t.workerID=${workerId} AND t.startDTS>='${start}' AND t.startDTS<='${end}'
 `;
 
 

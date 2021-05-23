@@ -48,6 +48,13 @@
       "description": "Worker/client full name",
       "default": ""
     },
+    "text": {
+      "$id": "Text",
+      "type": "string",
+      "title": "text",
+      "description": "Any text",
+      "default": ""
+    },
     "dts": {
       "oneOf": [
         {"type": "object", "format": "date-time"},
@@ -65,7 +72,9 @@
         {"required": ["JOBS","jobid"]},
         {"required": ["JOBS","workerid"]},
         {"required": ["JOBS","jobstatus"]},
-        {"required": ["JOBS","jobtype"]}
+        {"required": ["JOBS","jobtype"]},
+        {"required": ["JOBS","start"]},
+        {"required": ["JOBS","end"]}
       ],
       "properties": {
         "JOBS": {"$ref": "#/definitions/table"},
@@ -74,7 +83,9 @@
         "workerid": {"$ref": "#/definitions/id"},
         "client": {"$ref": "#/definitions/name"},
         "jobstatus": {"$ref": "#/definitions/jobstatus"},
-        "jobtype": {"$ref": "#/definitions/jobtype"}
+        "jobtype": {"$ref": "#/definitions/jobtype"},
+        "start": {"$ref": "#/definitions/text"},
+        "end": {"$ref": "#/definitions/text"}
       },
       "additionalProperties": false
     },
@@ -111,13 +122,17 @@
         {"required": ["GEMS"]},
         {"required": ["GEMS","id"]},
         {"required": ["GEMS","jobid"]},
-        {"required": ["GEMS","gemid"]}
+        {"required": ["GEMS","gemid"]},
+        {"required": ["GEMS","start"]},
+        {"required": ["GEMS","end"]}
       ],
       "properties": {
         "GEMS": {"$ref": "#/definitions/table"},
         "id": {"$ref": "#/definitions/id"},
         "jobid": {"$ref": "#/definitions/id"},
-        "gemid": {"$ref": "#/definitions/id"}
+        "gemid": {"$ref": "#/definitions/id"},
+        "start": {"$ref": "#/definitions/text"},
+        "end": {"$ref": "#/definitions/text"}
       },
       "additionalProperties": false
     },
@@ -126,13 +141,17 @@
         {"required": ["TIMINGS"]},
         {"required": ["TIMINGS","jobid"]},
         {"required": ["TIMINGS","workerid"]},
-        {"required": ["TIMINGS","startdts"]}
+        {"required": ["TIMINGS","startdts"]},
+        {"required": ["TIMINGS","start"]},
+        {"required": ["TIMINGS","end"]}
       ],
       "properties": {
         "TIMINGS": {"$ref": "#/definitions/table"},
         "jobid": {"$ref": "#/definitions/id"},
         "workerid": {"$ref": "#/definitions/id"},
-        "startdts": {"$ref": "#/definitions/dts"}
+        "startdts": {"$ref": "#/definitions/dts"},
+        "start": {"$ref": "#/definitions/text"},
+        "end": {"$ref": "#/definitions/text"}
       },
       "additionalProperties": false
     },
@@ -140,14 +159,14 @@
       "anyOf": [
         {"required": ["GAPS"]},
         {"required": ["GAPS","id"]},
-        {"required": ["GAPS","startdts"]},
-        {"required": ["GAPS","enddts"]}
+        {"required": ["GAPS","start"]},
+        {"required": ["GAPS","end"]}
       ],
       "properties": {
         "GAPS": {"$ref": "#/definitions/table"},
         "id": {"$ref": "#/definitions/id"},
-        "startdts": {"$ref": "#/definitions/dts"},
-        "enddts": {"$ref": "#/definitions/dts"}
+        "start": {"$ref": "#/definitions/dts"},
+        "end": {"$ref": "#/definitions/dts"}
       },
       "additionalProperties": false
     },

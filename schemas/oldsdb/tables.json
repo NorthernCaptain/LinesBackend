@@ -6,5 +6,6 @@
   "gems": {"name": "GEMS", "auto": [], "keys": [], "nulls":  []},
   "gaps": {"name": "GAPS", "auto": [], "keys": [], "nulls":  []},
   "users": {"name": "users", "auto": [], "keys": [], "nulls":  []},
-  "roles": {"name": "roles", "auto": [], "keys": [], "nulls":  []}
+  "roles": {"name": "roles", "auto": [], "keys": [], "nulls":  []},
+  "whois": {"name": "roles", "auto": [], "keys": [], "nulls":  []}
 }

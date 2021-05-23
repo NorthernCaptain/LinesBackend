@@ -35,7 +35,7 @@ const sqlTime = (workerId, start, end) => `
     FROM TIMINGS t
         JOIN JOBS j
         ON t.jobID=j.id
-    WHERE t.workerID=${workerId} AND t.startDTS>='${start}' AND t.startDTS<'${end}'
+    WHERE t.workerID=${workerId} AND t.startDTS>='${start}' AND t.startDTS<='${end}'
     GROUP BY t.jobID
     ) as x ;
 `;
@@ -54,13 +54,32 @@ const sqlGems = (workerId, start, end) => `
     FROM GEMS g
         JOIN GEM_LIST l ON g.gemID=l.id
         JOIN JOBS j on j.id=g.jobID
-    WHERE g.opt = 'job' AND j.workerID = ${workerId} and g.DTS>='${start}' AND g.DTS<'${end}'
+    WHERE g.opt = 'job' AND j.workerID = ${workerId} and g.DTS>='${start}' AND g.DTS<='${end}'
     GROUP BY  g.jobID, l.code, l.name
     ) as x WHERE code is not NULL and name is not NULL
         OR jobID is NULL and code is NULL and name is NULL
         OR jobID is not NULL and code is NULL and name is NULL
     ORDER BY jobID;
 `;
+
+
+const sqlIntervals = (workerId, start, end) => `
+    SELECT
+        t.jobID,
+        t.startDTS,
+        t.endDTS,
+        (UNIX_TIMESTAMP(t.endDTS) - UNIX_TIMESTAMP(t.startDTS)) as secs,
+        ROUND((UNIX_TIMESTAMP(t.endDTS) - UNIX_TIMESTAMP(t.startDTS))/3600,2) as hours,
+            CONCAT(
+                LPAD((UNIX_TIMESTAMP(t.endDTS) - UNIX_TIMESTAMP(t.startDTS)) DIV 3600 % 60,2, 0),
+                ':',
+                LPAD((UNIX_TIMESTAMP(t.endDTS) - UNIX_TIMESTAMP(t.startDTS)) % 3600 DIV 60, 2, 0),
+                ':00'
+                ) as time
+    FROM TIMINGS t
+    WHERE t.workerID=${workerId} AND t.startDTS>='${start}' AND t.startDTS<='${end}'
+`;
+
 
 const sqlIds = (ids) => `
     SELECT id,
@@ -80,20 +99,22 @@ const getResults = async (req, res) => {
 //    const regx = new RegExp("(?<=Bearer )[a-fA-F0-9]+")
 //    const token = regx.exec(req.get("Authorization"))[0]
 
-    let workerId = req.params.workerId;
-    let start = req.query.start;
-    let end = req.query.end;
+    const workerId = req.params.workerId;
+    var start = req.query.start;
+    var end = req.query.end;
     if ( typeof start === 'undefined' || typeof end === 'undefined' ) {
         throw new ClientError('Missing params');
         }
     start += ' 00:00:00';
     end += ' 23:59:59';
-    let timings = [];
-    let gems = [];
-    let jobs = [];
+    var timings = [];
+    var intervals = [];
+    var gems = [];
+    var jobs = [];
     try {
         timings = await dbRunSQL(sqlTime(workerId, start, end));
-        let ids = timings.map(x => x.jobID);
+        intervals = await dbRunSQL(sqlIntervals(workerId, start, end));
+        var ids = timings.map(x => x.jobID);
         gems = await dbRunSQL(sqlGems(workerId, start, end));
         ids = [...new Set(ids.concat(gems.map(x => x.jobID)))]
         if (ids.length === 0){
@@ -107,8 +128,10 @@ const getResults = async (req, res) => {
         }
 
     jobs.forEach(job => {
-        job.gems = gems.filter(time => time.jobID === job.id).map(({jobID, ...rest}) => rest)
-        job.times = timings.filter(time => time.jobID === job.id).map(({jobID, ...rest}) => rest)
+        job.gems = gems.filter(time => time.jobID === job.id).map(({jobID, ...rest}) => rest);
+        const tt = timings.filter(time => time.jobID === job.id).map(({jobID, ...rest}) => rest);
+        job.times = tt.length === 0? {'secs': 0, 'hours': 0.0, 'time': '00:00:00'}: tt[0]
+        job.intervals = intervals.filter(interval => interval.jobID === job.id).map(({jobID, ...rest}) => rest);
         })
     respond(jobs, 'skip', res);
 
@@ -130,12 +153,24 @@ const getRecords = async (req, res) => {
 
     var where = [];
     var params = [];
+    const dt = table === "gems" ? "DTS": "StartDTS";
 
     for ( var key in query ) {
-        where.push(`${key} = ?`);
-        params.push(query[key]);
+        switch (key){
+            case "start":
+                where.push(`${dt} >= ?`);
+                params.push(query[key] + ' 00:00:00');
+                break;
+            case "end":
+                where.push(`${dt} <= ?`);
+                params.push(query[key] + ' 23:59:59');
+                break;
+            default:
+                where.push(`${key} = ?`);
+                params.push(query[key]);
+        }
     }
-
+//    console.log(JSON.stringify(params));
     const limit_ = where.length == 0 ? 'LIMIT 100' : ''
     where = where.length > 0 ? 'WHERE ' + where.join(' AND ') : ''
     const sql = `SELECT ${tableColumns(table)} FROM ${table_name} ${where} ${limit_};`
@@ -152,6 +187,7 @@ const getRecords = async (req, res) => {
 
     respond(data, resp_schema, res);
     console.log(`  Success: ${data.length}`)
+//    for (var row of data) console.log(JSON.stringify(row));
 };
 
 const newRecords = async (req, res) => {

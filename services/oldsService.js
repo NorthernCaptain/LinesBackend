@@ -41,45 +41,117 @@ const sqlTime = (workerId, start, end) => `
 `;
 
 const sqlGems = (workerId, start, end) => `
-    SELECT
-        jobID,
-        code,
-        name,
-        cnt
-    FROM (
-    SELECT
-        g.jobID,
-        l.code, l.name,
-        -SUM(g.cnt/10) as cnt
-    FROM GEMS g
-        JOIN GEM_LIST l ON g.gemID=l.id
-        JOIN JOBS j on j.id=g.jobID
-    WHERE g.opt = 'job' AND j.workerID = ${workerId} and g.DTS>='${start}' AND g.DTS<='${end}'
-    GROUP BY  g.jobID, l.code, l.name
-    ) as x WHERE code is not NULL and name is not NULL
-        OR jobID is NULL and code is NULL and name is NULL
-        OR jobID is not NULL and code is NULL and name is NULL
-    ORDER BY jobID;
+WITH rn_ranks as
+(
+ SELECT id,
+        startDTS,
+        startDTS  as EndDTS,
+        workerID,
+        type,
+        CASE WHEN fk is null then -1 ELSE fk END as fk,
+        ranks.rank,
+        ROW_NUMBER() OVER(PARTITION BY workerID, CASE WHEN fk is null then -1 ELSE fk END, type ORDER BY startDTS DESC) as n
+ FROM oldsdb.ranks
+ WHERE workerId = ${workerId}
+   AND type = 'gem'
+),
+r AS (
+SELECT r1.n,
+    r1.Id,
+    r1.workerID,
+    r1.type,
+    r1.fk,
+    r1.startDTS,
+    CASE WHEN r2.endDts IS NULL THEN CURRENT_TIMESTAMP ELSE r2.endDTS END endDTS,
+    r1.rank
+FROM rn_ranks r1
+      LEFT JOIN rn_ranks r2
+                ON r1.WorkerID = r2.WorkerID
+                    AND r1.type = r2.type
+                    AND r1.fk = r2.fk
+                    AND r1.n = r2.n + 1
+)
+SELECT j.id as jobID,
+    g.gemID,
+    l.code,
+    l.name,
+    SUM(-g.cnt) / 10          as gems,
+    SUM(-g.cnt * r.rank) / 10 as amount
+FROM oldsdb.gems as g
+    JOIN oldsdb.gem_list l ON g.gemID = l.id
+    JOIN oldsdb.jobs j ON j.id = g.jobID
+    JOIN r
+      ON r.workerId = j.workerID AND r.startDTS <= g.DTS AND r.EndDTS > g.DTS and g.gemid = r.fk
+WHERE j.workerID = ${workerId}
+    AND g.opt = 'job'
+    AND g.DTS BETWEEN '${start}' AND '${end}'
+    GROUP BY j.ID, g.gemID, l.code, l.name
 `;
 
 
 const sqlIntervals = (workerId, start, end) => `
-    SELECT
-        t.jobID,
+WITH rn_ranks as
+(
+    SELECT id,
+        startDTS,
+        startDTS as EndDTS,
+        workerID,
+        type,
+        CASE WHEN fk is null then -1 ELSE fk END as fk,
+        ranks.rank,
+        ROW_NUMBER() OVER(PARTITION BY workerID, type ORDER BY startDTS DESC) as n
+    FROM oldsdb.ranks
+    WHERE workerId = ${workerId}
+),
+r AS
+(
+    SELECT r1.n,
+        r1.Id,
+        r1.workerID,
+        r1.type,
+        r1.fk,
+        r1.startDTS,
+        CASE WHEN r2.endDts IS NULL THEN CURRENT_TIMESTAMP ELSE r2.endDTS END endDTS,
+        r1.rank
+    FROM rn_ranks r1
+          LEFT JOIN rn_ranks r2
+                    ON r1.WorkerID = r2.WorkerID
+                        AND r1.type = r2.type
+                        AND r1.fk = r2.fk
+                        AND r1.n = r2.n + 1
+),
+intervals as
+(
+    SELECT t.jobID,
         t.startDTS,
         t.endDTS,
-        (UNIX_TIMESTAMP(t.endDTS) - UNIX_TIMESTAMP(t.startDTS)) as secs,
-        ROUND((UNIX_TIMESTAMP(t.endDTS) - UNIX_TIMESTAMP(t.startDTS))/3600,2) as hours,
-            CONCAT(
-                LPAD((UNIX_TIMESTAMP(t.endDTS) - UNIX_TIMESTAMP(t.startDTS)) DIV 3600 % 60,2, 0),
-                ':',
-                LPAD((UNIX_TIMESTAMP(t.endDTS) - UNIX_TIMESTAMP(t.startDTS)) % 3600 DIV 60, 2, 0),
-                ':00'
-                ) as time
-    FROM TIMINGS t
+        t.workerID,
+        (UNIX_TIMESTAMP(CASE WHEN t.endDTS is NULL THEN t.startDTS ELSE t.endDTS END) -
+         UNIX_TIMESTAMP(t.StartDTS))                               as secs,
+        ROUND((UNIX_TIMESTAMP(CASE WHEN t.endDTS is NULL THEN t.startDTS ELSE t.endDTS END) -
+               UNIX_TIMESTAMP(t.startDTS)) / 60, 0)                as mins,
+        ROUND(ROUND((UNIX_TIMESTAMP(CASE WHEN t.endDTS is NULL THEN t.startDTS ELSE t.endDTS END) -
+                     UNIX_TIMESTAMP(t.startDTS)) / 60, 0) / 60, 2) as hours
+    FROM timings t
     WHERE t.workerID=${workerId} AND t.startDTS>='${start}' AND t.startDTS<='${end}'
+)
+SELECT t.jobID,
+       t.startDTS,
+       t.endDTS,
+       r.type,
+       r.rank,
+       t.secs  as secs,
+       t.hours as hours,
+       CONCAT(
+               LPAD(t.mins DIV 60,2, 0),':',
+               LPAD(t.mins % 60, 2, 0),':00'
+           ) as time,
+      TRUNCATE(t.hours*r.rank, 2) as usd
+FROM intervals t
+    JOIN r
+ON r.WorkerId=t.WorkerID AND r.startDTS<= t.startDTS AND r.EndDTS>t.startDTS and -1=r.fk
+;
 `;
-
 
 const sqlIds = (ids) => `
     SELECT id,
@@ -113,6 +185,7 @@ const getResults = async (req, res) => {
     var jobs = [];
     try {
         timings = await dbRunSQL(sqlTime(workerId, start, end));
+        // console.log(sqlIntervals(workerId, start, end));
         intervals = await dbRunSQL(sqlIntervals(workerId, start, end));
         var ids = timings.map(x => x.jobID);
         gems = await dbRunSQL(sqlGems(workerId, start, end));

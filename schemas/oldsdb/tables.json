@@ -7,5 +7,10 @@
   "gaps": {"name": "GAPS", "auto": [], "keys": [], "nulls":  []},
   "users": {"name": "users", "auto": [], "keys": [], "nulls":  []},
   "roles": {"name": "roles", "auto": [], "keys": [], "nulls":  []},
-  "whois": {"name": "roles", "auto": [], "keys": [], "nulls":  []}
+  "whois": {"name": "roles", "auto": [], "keys": [], "nulls":  []},
+  "expenses": {"name": "excpenses", "auto": [], "keys": [], "nulls":  []},
+  "job_payments": {"name": "job_payments", "auto": [], "keys": [], "nulls":  []},
+  "jobs_p": {"name": "jobs_p", "auto": [], "keys": [], "nulls":  []},
+  "payments": {"name": "payments", "auto": [], "keys": [], "nulls":  []},
+  "ranks": {"name": "ranks", "auto": [], "keys": [], "nulls":  []}
 }

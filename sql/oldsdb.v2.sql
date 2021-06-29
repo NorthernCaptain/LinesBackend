@@ -474,31 +474,8 @@ FROM timings
 
 select * from authdb.users;
 select * from oldsdb.workers
-INSERT INTO authdb.users
-(email, name, password)
-VALUES ('leonidtheking@gmail.com', 'Leo', '86709173364eb1d012e5e376858228753280a1b446acf1eba353c4a3f498d938')
-
-INSERT INTO oldsdb.workers
-(email, name, description, userid, role)
-VALUES ('leonidtheking@gmail.com', 'Leo', '', 10, 9)
 
 
--- leanok - serafima
--- old11old - abyrvalg
--- leonidtheking - elcondor
-
---api.reader@navalclash.com
---_q1br4as2_
---a093f54f490e6def67177548bee60458597554743e8d22a04261d9c529af1287
-
---INSERT INTO authdb.users
---(email, name, password)
---VALUES ('api.reader@navalclash.com', 'Alex', '2faca8bc02caa9e13a04534bf5c74dcebf1227a7903c563b1f8bbfdea1a0f73e');
---INSERT INTO oldsdb.workers
---(email, name, description, userid, role)
---SELECT email, name, 'account with access to results',user_id, 99
---FROM  authdb.users
---WHERE email = 'api.reader@navalclash.com'
 
 
 select * from timings t

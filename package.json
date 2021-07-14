@@ -9,9 +9,15 @@
   "dependencies": {
     "@awaitjs/express": "^0.6.1",
     "ajv": "^6.12.2",
+    "apollo-server-express": "^3.0.0",
     "body-parser": "^1.19.0",
     "crypto": "^1.0.1",
+    "dataloader": "^2.0.0",
+    "datasource-sql": "^1.4.1",
     "express": "^4.17.1",
+    "express-graphql": "^0.12.0",
+    "graphql": "^15.5.1",
+    "graphql-scalars": "^1.10.0",
     "helmet": "^3.22.0",
     "moment": "^2.25.3",
     "mysql": "^2.18.1",
@@ -19,6 +25,9 @@
     "uuid": "^8.0.0"
   },
   "scripts": {
-    "start": "node app.js"
+    "start": "nodemon app.js"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.11"
   }
 }

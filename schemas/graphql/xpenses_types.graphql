@@ -1,0 +1,79 @@
+
+scalar DateTime
+
+type User {
+    id: Int!,
+    short_name: String,
+    sync_id: Int,
+    auth_user_id: Int,
+    state: Int,
+    date_created: DateTime,
+    smsregexps: [SmsRegExp]!
+}
+
+type Wallet {
+    id: Int!,
+    name: String,
+    short_name: String,
+    sync_id: Int,
+    sort_order: Int,
+    state: Int,
+    amount: Int,
+    amount_date: DateTime,
+    modified: DateTime
+}
+
+type Category {
+    id: Int!,
+    name: String,
+    sync_id: Int,
+    sort_order: Int,
+    state: Int,
+    typ: Int,
+    parent_id: Int,
+    parent: Category,
+    children: [Category]!
+    modified: DateTime
+}
+
+type SmsRegExp {
+    id: Int!,
+    description: String,
+    category_id: Int!,
+    category: Category!,
+    amount: Int!,
+    state: Int!,
+    sync_id: Int,
+    user_id: Int!,
+    user: User!,
+    wallet_id: Int!,
+    wallet: Wallet!,
+    regex: String!,
+    date_created: DateTime
+}
+
+type Expense {
+    tran_date: DateTime,
+    description: String,
+    id: Int!,
+    amount: Int!,
+    state: Int!,
+    typ: Int,
+    date_created: DateTime,
+    category_id: Int!,
+    category: Category,
+    user_id: Int!,
+    user: User,
+    wallet_id: Int!,
+    wallet: Wallet
+}
+
+type Query {
+    user(id: Int!): User
+    wallet(id: Int!): Wallet
+    category(id: Int!): Category
+    categories: [Category]!
+    smsregexp(id: Int!): SmsRegExp
+    smsregexps(user_id: Int): [SmsRegExp]!
+    expense(id: Int!): Expense
+}

@@ -4,6 +4,7 @@ const https = require('https');
 const bodyParser = require('body-parser');
 const helmet = require('helmet');
 const oAuth2Server = require("node-oauth2-server");
+const cors = require('cors');
 
 const {initValidators} = require('../utils/validate');
 const {expressErrorHandler} = require('../errors');
@@ -19,6 +20,8 @@ const initExpress = (app) => {
         debug: true,
         accessTokenLifetime: 3600*12
     });
+
+    app.use(cors());
 
     //strip headers
     app.use(helmet());

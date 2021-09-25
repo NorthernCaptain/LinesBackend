@@ -9,6 +9,7 @@ type User {
     state: Int,
     date_created: DateTime,
     smsregexps: [SmsRegExp]!
+    group_code: Int
 }
 
 type Wallet {
@@ -69,7 +70,7 @@ type Expense {
 }
 
 type Query {
-    user(id: Int!): User
+    user(id: Int, token: String): User
     wallet(id: Int!): Wallet
     category(id: Int!): Category
     categories: [Category]!

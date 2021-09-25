@@ -1,7 +1,12 @@
 
 const queryResolvers = {
-    user: async (parent, {id}, {dataSources, userCache}) => {
-        return userCache.cached("id", id, async () => dataSources.db.getUser(id))
+    user: async (parent, {id, token}, {dataSources, userCache}) => {
+        if(id) {
+            return userCache.cached("id", id, async () => dataSources.db.getUser(id))
+        } else if(token) {
+            return dataSources.db.getUserByToken(token)
+        }
+        return { id: 0 }
     }
 }
 

@@ -8,6 +8,12 @@ class ExpensesDatabase extends SQLDataSource {
         return this.knex.select().from("users").where("id", id).first().cache();
     }
 
+    async getUserByToken(token) {
+        return this.knex.select().from("users")
+            .join("authdb.access_tokens", "authdb.access_tokens.user_id", "=", "users.auth_user_id")
+            .where("authdb.access_tokens.token", token).first().cache();
+    }
+
     async getWallet(id) {
         return this.knex.select().from("wallet").where("id", id).first().cache();
     }

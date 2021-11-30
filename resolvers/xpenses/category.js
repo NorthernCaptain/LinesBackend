@@ -2,7 +2,7 @@ const queryResolvers = {
     category: async (parent, {id}, {dataSources, categoryCache}) => {
         return categoryCache.cached("id", id, async () => dataSources.db.getCategory(id))
     },
-    categories: async (_, __, {dataSources}) => dataSources.db.getCategories()
+    categories: async (_, {group_code, typ}, {dataSources}) => dataSources.db.getCategories(group_code, typ)
 }
 
 const objectResolvers = {

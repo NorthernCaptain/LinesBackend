@@ -30,8 +30,12 @@ class ExpensesDatabase extends SQLDataSource {
         return id ? this.knex.select().from("ecategory").where("parent_id", id).cache() : [];
     }
 
-    async getCategories() {
-        return this.knex.select().from("ecategory").cache();
+    async getCategories(group_code, typ) {
+        let query = this.knex.select().from("ecategory")
+            .where("group_code", group_code)
+            .andWhere("state", 1);
+        if(typ) query = query.andWhere("typ", typ);
+        return query.orderBy(["name", "id"]).cache();
     }
 
     async getSmsRegExps(user_id) {
@@ -48,6 +52,17 @@ class ExpensesDatabase extends SQLDataSource {
 
     async getExpense(id) {
         return id ? this.knex.select().from("expenses").where("id", id).first().cache() : null;
+    }
+
+    async getExpenses(group_code, date_from, date_to, typ) {
+        if(!group_code || !date_from || !date_to) return []
+        let query =
+            this.knex.select().from("expenses")
+                .where("group_code", group_code)
+                .andWhere("tran_date", ">=", date_from)
+                .andWhere("tran_date", "<=", date_to);
+        if(typ) query = query.andWhere("typ", typ);
+        return query.orderBy(["tran_date", "id"]).cache();
     }
 
 }

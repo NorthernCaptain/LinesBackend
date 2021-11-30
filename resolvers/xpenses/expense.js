@@ -5,6 +5,9 @@ const categoryResolvers = require('./category').resolvers
 const queryResolvers = {
     expense: async (parent, {id}, {dataSources}) => {
         return dataSources.db.getExpense(id)
+    },
+    expenses: async (parent, {group_code, date_from, date_to, typ}, {dataSources}) => {
+        return dataSources.db.getExpenses(group_code, date_from, date_to, typ)
     }
 }
 

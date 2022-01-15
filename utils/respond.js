@@ -6,6 +6,7 @@ const respond = (data, schemaName, res) => {
     if(schemaName === "skip" || jsonv.validate(schemaName, msg)) {
         res.json(msg)
     } else {
+        let error = jsonv.errorsText()
         throw new ServerError(jsonv.errorsText());
     }
 };

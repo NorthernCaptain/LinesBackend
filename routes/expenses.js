@@ -10,6 +10,8 @@ const categoryResolvers = require('../resolvers/xpenses/category').resolvers;
 const smsregexpResolvers = require('../resolvers/xpenses/smsregexp').resolvers;
 const expenseResolvers = require('../resolvers/xpenses/expense').resolvers;
 
+const { userInfoByToken, processSync } = require('../services/xpenseService');
+
 const expensesDataSource = require('../db/expenses').apolloDB;
 
 const router = express.Router();
@@ -25,6 +27,8 @@ const setup = (app) => {
             }));
     })
 
+    router.post('/api/user', userInfoByToken)
+    router.post('/api/sync', processSync)
     return router;
 }
 

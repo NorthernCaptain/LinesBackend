@@ -38,6 +38,9 @@ const initValidators = () => {
 
     addSchema('register_user_req', 'auth/register_user_req.json', jsonv);
     addSchema('register_user_resp', 'auth/register_user_resp.json', jsonv);
+
+    addSchema('user_info_by_token_req', 'xpenses/user_info_by_token_req.json', jsonv);
+    addSchema('user_info_by_token_resp', 'xpenses/user_info_by_token_resp.json', jsonv);
 };
 
 exports.jsonv = jsonv;

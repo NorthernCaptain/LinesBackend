@@ -11,7 +11,7 @@ class ExpensesDatabase extends SQLDataSource {
     async getUserByToken(token) {
         return this.knex.select().from("users")
             .join("authdb.access_tokens", "authdb.access_tokens.user_id", "=", "users.auth_user_id")
-            .where("authdb.access_tokens.token", token).first().cache();
+            .where("authdb.access_tokens.token", token).first();
     }
 
     async getWallet(id) {

@@ -1,0 +1,139 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://us.navalclash.com/schemas/xpenses/user_info_by_token_resp.json",
+  "type": "object",
+  "title": "/xpenses/api/user server response",
+  "description": "request user info by token",
+  "default": {},
+  "examples": [
+    {
+      "success": true,
+      "data": {
+        "type": "usr",
+        "id": 22,
+        "si": 34,
+        "nm": "John Doe",
+        "grp": 1232,
+        "di": 12,
+        "st": 1
+      }
+    }
+  ],
+  "required": [
+    "success",
+    "data"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "success": {
+      "$id": "#/properties/success",
+      "type": "boolean",
+      "title": "Operation success result",
+      "description": "Indicates successful result or not (true/false)",
+      "default": false,
+      "examples": [
+        true
+      ]
+    },
+    "data": {
+      "$id": "#/properties/data",
+      "type": "object",
+      "title": "Response result data",
+      "description": "Result object containing server set data",
+      "default": {},
+      "examples": [
+        {
+          "type": "usr",
+          "id": 22,
+          "si": 34,
+          "nm": "John Doe",
+          "grp": 1232,
+          "di": 12,
+          "st": 1
+        }
+      ],
+      "required": [
+        "id",
+        "si",
+        "nm",
+        "grp",
+        "di",
+        "st",
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$id": "#/properties/xpenses/id",
+          "type": "integer",
+          "title": "object id",
+          "description": "Object id",
+          "default": 0,
+          "examples": [
+            100
+          ]
+        },
+        "si": {
+          "$id": "#/properties/xpenses/si",
+          "type": "integer",
+          "title": "object sync id",
+          "description": "Object Sync id",
+          "default": 0,
+          "examples": [
+            100
+          ]
+        },
+        "di": {
+          "$id": "#/properties/xpenses/di",
+          "type": "integer",
+          "title": "Device id",
+          "description": "Device id",
+          "default": 0,
+          "examples": [
+            100
+          ]
+        },
+        "grp": {
+          "$id": "#/properties/xpenses/grp",
+          "type": "integer",
+          "title": "Group code",
+          "description": "Group code",
+          "default": 0,
+          "examples": [
+            100
+          ]
+        },
+        "st": {
+          "$id": "#/properties/xpenses/st",
+          "type": "integer",
+          "title": "Status code",
+          "description": "Status code",
+          "default": 0,
+          "examples": [
+            1
+          ]
+        },
+        "nm": {
+          "$id": "#/properties/nm",
+          "type": "string",
+          "title": "user short name",
+          "description": "User short name",
+          "default": "",
+          "examples": [
+            "leo"
+          ]
+        },
+        "type": {
+          "$id": "#/properties/xpenses/type",
+          "type": "string",
+          "title": "event type",
+          "description": "event type",
+          "default": "",
+          "examples": [
+            "usr"
+          ]
+        }
+      }
+    }
+  }
+}

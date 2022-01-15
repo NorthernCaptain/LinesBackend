@@ -6,7 +6,7 @@ const router = express.Router();
 
 const setup = (app) => {
     router.post('/register', app.oauth.authorise(), wrap(registerUser));
-    router.post('/login', app.oauth.grant(), loginUser);
+    router.post('/login', app.oauth.grant());
 
     return router;
 };

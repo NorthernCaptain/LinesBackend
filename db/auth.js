@@ -1,9 +1,15 @@
 const  crypto = require("crypto");
 const  db = require('./db').authdb;
 
+const cryptPassword = (password) => {
+    return password.length > 60
+        ? password
+        : crypto.createHash("sha256").update(password).digest("hex");
+}
+
 const dbCreateUser = async (email, password, name) => {
     return new Promise((resolve => {
-        let pwdEncrypted = crypto.createHash("sha256").update(password).digest("hex");
+        let pwdEncrypted = cryptPassword(password);
         db.query("insert into users (email, password, name) values(?,?,?)",
             [email, pwdEncrypted, name], (error, result) => {
                 let id = null;
@@ -18,7 +24,7 @@ const dbCreateUser = async (email, password, name) => {
 
 const dbGetUser = async (email, password) => {
     return new Promise((resolve => {
-        let pwdEncrypted = crypto.createHash("sha256").update(password).digest("hex");
+        let pwdEncrypted = cryptPassword(password);
         db.query("select * from users where email=? and password=?",
             [email, pwdEncrypted], (error, result) => {
                 let id = null;

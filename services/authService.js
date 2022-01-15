@@ -65,6 +65,7 @@ async function registerUser(req, res) {
 
 function loginUser(req, res) {
     console.log("login called", req)
+    console.log("login body", req.body)
 }
 
 exports.loginUser = loginUser;

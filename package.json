@@ -8,7 +8,7 @@
   "private": false,
   "dependencies": {
     "@awaitjs/express": "^0.6.1",
-    "ajv": "^6.12.2",
+    "ajv": "^6.12.3",
     "body-parser": "^1.19.0",
     "crypto": "^1.0.1",
     "express": "^4.17.1",

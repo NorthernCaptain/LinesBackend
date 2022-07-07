@@ -13,7 +13,7 @@
     "crypto": "^1.0.1",
     "express": "^4.17.1",
     "helmet": "^3.22.0",
-    "moment": "^2.25.3",
+    "moment": "^2.29.4",
     "mysql": "^2.18.1",
     "node-oauth2-server": "^2.4.0",
     "uuid": "^8.0.0"

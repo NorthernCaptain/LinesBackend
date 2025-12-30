@@ -73,7 +73,7 @@ httpsServer.listen(8443, '0.0.0.0', (err) => {
         if (err) {
             console.error("ERROR: ", err);
         }
-        console.log(`Server 1.3.0 started, UID is now ${process.getuid ? process.getuid() : ''}`);
+        console.log(`Server 1.4.0 started, UID is now ${process.getuid ? process.getuid() : ''}`);
 });
 
 const httpServer = app.listen(10080, '0.0.0.0');

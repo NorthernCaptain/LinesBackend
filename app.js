@@ -34,7 +34,25 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(bodyParser.text());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static('public'));
+// Virtual host static file serving
+app.use((req, res, next) => {
+    const host = req.hostname;
+    let staticPath = 'public'; // default
+
+    if (host === 'wormit.navalclash.com') {
+        staticPath = 'public/wormit';
+    } else if (host === 'quadronia.navalclash.com') {
+        staticPath = 'public/quadronia';
+    } else if (host === 'ncbox.navalclash.com') {
+        staticPath = 'public/ncbox';
+    } else if (host === 'xnc.navalclash.com') {
+        staticPath = 'public/xnc';
+    } else if (host === 'navalclash.com' || host === 'www.navalclash.com') {
+        staticPath = 'public/navalclash';
+    }
+
+    express.static(staticPath)(req, res, next);
+});
 app.use(app.oauth.errorHandler());
 app.use('/oldsdb', oldsRouterFunc(app));
 app.use('/', linesRouterFunc(app));
@@ -55,7 +73,7 @@ httpsServer.listen(8443, '0.0.0.0', (err) => {
         if (err) {
             console.error("ERROR: ", err);
         }
-        console.log(`Server 1.3.0 started, UID is now ${process.getuid ? process.getuid() : ''}`);
+        console.log(`Server 1.4.0 started, UID is now ${process.getuid ? process.getuid() : ''}`);
 });
 
 const httpServer = app.listen(10080, '0.0.0.0');

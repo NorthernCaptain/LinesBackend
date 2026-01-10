@@ -1,97 +1,80 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://lines.navalclash.com/schemas/session_new_resp.json",
-  "type": "object",
-  "title": "/session - new session server response",
-  "description": "Server response for /session request",
-  "default": {},
-  "examples": [
-    {
-      "success": true,
-      "data": {
-        "uuid": "7b895b4d-3dcd-4b3e-ac46-e009558b485e",
-        "ip": "162.219.176.42",
-        "version": "0.7.0",
-        "id": 22
-      }
-    }
-  ],
-  "required": [
-    "success",
-    "data"
-  ],
-  "additionalProperties": false,
-  "properties": {
-    "success": {
-      "$id": "#/properties/success",
-      "type": "boolean",
-      "title": "Operation success result",
-      "description": "Indicates successful result or not (true/false)",
-      "default": false,
-      "examples": [
-        true
-      ]
-    },
-    "data": {
-      "$id": "#/properties/data",
-      "type": "object",
-      "title": "Response result data",
-      "description": "Result object containing server data set",
-      "default": {},
-      "examples": [
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://lines.navalclash.com/schemas/session_new_resp.json",
+    "type": "object",
+    "title": "/session - new session server response",
+    "description": "Server response for /session request",
+    "default": {},
+    "examples": [
         {
-          "uuid": "7b895b4d-3dcd-4b3e-ac46-e009558b485e",
-          "ip": "162.219.176.42",
-          "version": "0.7.0"
+            "success": true,
+            "data": {
+                "uuid": "7b895b4d-3dcd-4b3e-ac46-e009558b485e",
+                "ip": "162.219.176.42",
+                "version": "0.7.0",
+                "id": 22
+            }
         }
-      ],
-      "required": [
-        "uuid",
-        "ip",
-        "version"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "uuid": {
-          "$id": "#/properties/data/properties/uuid",
-          "type": "string",
-          "title": "session uuid",
-          "description": "Game session uuid",
-          "default": "",
-          "examples": [
-            "7b895b4d-3dcd-4b3e-ac46-e009558b485e"
-          ]
+    ],
+    "required": ["success", "data"],
+    "additionalProperties": false,
+    "properties": {
+        "success": {
+            "$id": "#/properties/success",
+            "type": "boolean",
+            "title": "Operation success result",
+            "description": "Indicates successful result or not (true/false)",
+            "default": false,
+            "examples": [true]
         },
-        "ip": {
-          "$id": "#/properties/data/properties/ip",
-          "type": "string",
-          "title": "Client ip address",
-          "description": "Client IP address detected by the server",
-          "default": "0.0.0.0",
-          "examples": [
-            "162.219.176.42"
-          ]
-        },
-        "version": {
-          "$id": "#/properties/data/properties/version",
-          "type": "string",
-          "title": "Client version",
-          "description": "Current client version",
-          "examples": [
-            "0.7.0"
-          ]
-        },
-        "id": {
-          "$id": "#/properties/data/properties/id",
-          "type": "integer",
-          "title": "internal session id",
-          "description": "internal session id (for debugging)",
-          "default": 0,
-          "examples": [
-            100
-          ]
+        "data": {
+            "$id": "#/properties/data",
+            "type": "object",
+            "title": "Response result data",
+            "description": "Result object containing server data set",
+            "default": {},
+            "examples": [
+                {
+                    "uuid": "7b895b4d-3dcd-4b3e-ac46-e009558b485e",
+                    "ip": "162.219.176.42",
+                    "version": "0.7.0"
+                }
+            ],
+            "required": ["uuid", "ip", "version"],
+            "additionalProperties": false,
+            "properties": {
+                "uuid": {
+                    "$id": "#/properties/data/properties/uuid",
+                    "type": "string",
+                    "title": "session uuid",
+                    "description": "Game session uuid",
+                    "default": "",
+                    "examples": ["7b895b4d-3dcd-4b3e-ac46-e009558b485e"]
+                },
+                "ip": {
+                    "$id": "#/properties/data/properties/ip",
+                    "type": "string",
+                    "title": "Client ip address",
+                    "description": "Client IP address detected by the server",
+                    "default": "0.0.0.0",
+                    "examples": ["162.219.176.42"]
+                },
+                "version": {
+                    "$id": "#/properties/data/properties/version",
+                    "type": "string",
+                    "title": "Client version",
+                    "description": "Current client version",
+                    "examples": ["0.7.0"]
+                },
+                "id": {
+                    "$id": "#/properties/data/properties/id",
+                    "type": "integer",
+                    "title": "internal session id",
+                    "description": "internal session id (for debugging)",
+                    "default": 0,
+                    "examples": [100]
+                }
+            }
         }
-      }
     }
-  }
 }

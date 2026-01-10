@@ -1,122 +1,97 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://lines.navalclash.com/schemas/top_scores_resp.json",
-  "type": "object",
-  "title": "/scores/top server response",
-  "description": "Server response for /scores/top request",
-  "default": {},
-  "examples": [
-    {
-      "success": true,
-      "data": [
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://lines.navalclash.com/schemas/top_scores_resp.json",
+    "type": "object",
+    "title": "/scores/top server response",
+    "description": "Server response for /scores/top request",
+    "default": {},
+    "examples": [
         {
-        "num": 1,
-        "user_name": "John",
-        "score": 100,
-        "mode": "easy",
-        "level": 2
-      }
-      ]
-    }
-  ],
-  "required": [
-    "success",
-    "data"
-  ],
-  "additionalProperties": false,
-  "properties": {
-    "success": {
-      "$id": "#/properties/success",
-      "type": "boolean",
-      "title": "Operation success result",
-      "description": "Indicates successful result or not (true/false)",
-      "default": false,
-      "examples": [
-        true
-      ]
-    },
-    "data": {
-      "$id": "#/properties/data",
-      "type": "array",
-      "title": "Response result data",
-      "description": "Result array containing data objects",
-      "examples": [
-        {
-          "num": 1,
-          "user_name": "John",
-          "mode": "easy",
-          "score": 100,
-          "level": 2
+            "success": true,
+            "data": [
+                {
+                    "num": 1,
+                    "user_name": "John",
+                    "score": 100,
+                    "mode": "easy",
+                    "level": 2
+                }
+            ]
         }
-      ],
-      "required": [
-        "num",
-        "user_name",
-        "score",
-        "mode",
-        "level"
-      ],
-      "additionalProperties": false,
-      "items": {
-        "type": "object",
-        "properties": {
-          "user_name": {
-            "$id": "#/properties/data/properties/user_name",
-            "type": "string",
-            "title": "User name",
-            "description": "User name holding this rank",
-            "default": "",
+    ],
+    "required": ["success", "data"],
+    "additionalProperties": false,
+    "properties": {
+        "success": {
+            "$id": "#/properties/success",
+            "type": "boolean",
+            "title": "Operation success result",
+            "description": "Indicates successful result or not (true/false)",
+            "default": false,
+            "examples": [true]
+        },
+        "data": {
+            "$id": "#/properties/data",
+            "type": "array",
+            "title": "Response result data",
+            "description": "Result array containing data objects",
             "examples": [
-              "John"
-            ]
-          },
-          "num": {
-            "$id": "#/properties/data/properties/num",
-            "type": "integer",
-            "title": "Place in the leaderboard",
-            "description": "Place number in the leaderboard",
-            "default": 1,
-            "examples": [
-              1
-            ]
-          },
-          "score": {
-            "$id": "#/properties/data/properties/score",
-            "type": "integer",
-            "title": "Current game score",
-            "description": "Current game score",
-            "default": 0,
-            "examples": [
-              100
-            ]
-          },
-          "level": {
-            "$id": "#/properties/data/properties/level",
-            "type": "integer",
-            "title": "Game level",
-            "description": "Current game level passed to the server in the update request",
-            "default": 0,
-            "examples": [
-              2
-            ]
-          },
-          "mode": {
-            "$id": "#/properties/data/properties/mode",
-            "type": "string",
-            "title": "Game mode",
-            "description": "Game mode used to play this game, should be easy or hard",
-            "default": "",
-            "enum": [
-              "easy",
-              "hard"
+                {
+                    "num": 1,
+                    "user_name": "John",
+                    "mode": "easy",
+                    "score": 100,
+                    "level": 2
+                }
             ],
-            "examples": [
-              "easy",
-              "hard"
-            ]
-          }
+            "required": ["num", "user_name", "score", "mode", "level"],
+            "additionalProperties": false,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "user_name": {
+                        "$id": "#/properties/data/properties/user_name",
+                        "type": "string",
+                        "title": "User name",
+                        "description": "User name holding this rank",
+                        "default": "",
+                        "examples": ["John"]
+                    },
+                    "num": {
+                        "$id": "#/properties/data/properties/num",
+                        "type": "integer",
+                        "title": "Place in the leaderboard",
+                        "description": "Place number in the leaderboard",
+                        "default": 1,
+                        "examples": [1]
+                    },
+                    "score": {
+                        "$id": "#/properties/data/properties/score",
+                        "type": "integer",
+                        "title": "Current game score",
+                        "description": "Current game score",
+                        "default": 0,
+                        "examples": [100]
+                    },
+                    "level": {
+                        "$id": "#/properties/data/properties/level",
+                        "type": "integer",
+                        "title": "Game level",
+                        "description": "Current game level passed to the server in the update request",
+                        "default": 0,
+                        "examples": [2]
+                    },
+                    "mode": {
+                        "$id": "#/properties/data/properties/mode",
+                        "type": "string",
+                        "title": "Game mode",
+                        "description": "Game mode used to play this game, should be easy or hard",
+                        "default": "",
+                        "enum": ["easy", "hard"],
+                        "examples": ["easy", "hard"]
+                    }
+                }
+            }
         }
-      }
     }
-  }
 }

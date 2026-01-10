@@ -1,15 +1,17 @@
-const {ServerError, ClientError} = require('../errors');
-const {validate} = require('../utils/validate.js');
-const {respond} = require('../utils/respond.js');
-const {dbRunSQL, tableColumns, getTables} = require('../db/oldsdb');
+const { ServerError, ClientError } = require("../errors")
+const { validate } = require("../utils/validate.js")
+const { respond } = require("../utils/respond.js")
+const { dbRunSQL, tableColumns, getTables } = require("../db/oldsdb")
 
-const resp_schema = "response";
-const req_schema = "get_req";
+const resp_schema = "response"
+const req_schema = "get_req"
 
 const inArray = (arr, obj) => {
-    if (Array.isArray(arr)){
-        for (let el in arr){
-            if (arr[el] === obj){ return true}
+    if (Array.isArray(arr)) {
+        for (let el in arr) {
+            if (arr[el] === obj) {
+                return true
+            }
         }
     }
     return false
@@ -38,7 +40,7 @@ const sqlTime = (workerId, start, end) => `
     WHERE t.workerID=${workerId} AND t.startDTS>='${start}' AND t.startDTS<='${end}'
     GROUP BY t.jobID
     ) as x ;
-`;
+`
 
 const sqlGems = (workerId, start, end) => `
 WITH rn_ranks as
@@ -86,8 +88,7 @@ WHERE j.workerID = ${workerId}
     AND g.opt = 'job'
     AND g.DTS BETWEEN '${start}' AND '${end}'
     GROUP BY j.ID, g.gemID, l.code, l.name
-`;
-
+`
 
 const sqlIntervals = (workerId, start, end) => `
 WITH rn_ranks as
@@ -151,7 +152,7 @@ FROM intervals t
     JOIN r
 ON r.WorkerId=t.WorkerID AND r.startDTS<= t.startDTS AND r.EndDTS>t.startDTS and -1=r.fk
 ;
-`;
+`
 
 const sqlIds = (ids) => `
     SELECT id,
@@ -164,258 +165,250 @@ const sqlIds = (ids) => `
         , SUBSTR(Description, 1, INSTR(Description, '[')-2) as Discription
         , SUBSTR(Description, INSTR(Description, '[')+1, INSTR(Description, ']') - INSTR(Description, '[') - 1) as Color
     FROM oldsdb.JOBS where id IN (${ids})
-`;
-
+`
 
 const getResults = async (req, res) => {
-//    const regx = new RegExp("(?<=Bearer )[a-fA-F0-9]+")
-//    const token = regx.exec(req.get("Authorization"))[0]
+    //    const regx = new RegExp("(?<=Bearer )[a-fA-F0-9]+")
+    //    const token = regx.exec(req.get("Authorization"))[0]
 
-    const workerId = req.params.workerId;
-    var start = req.query.start;
-    var end = req.query.end;
-    if ( typeof start === 'undefined' || typeof end === 'undefined' ) {
-        throw new ClientError('Missing params');
-        }
-    start += ' 00:00:00';
-    end += ' 23:59:59';
-    var timings = [];
-    var intervals = [];
-    var gems = [];
-    var jobs = [];
+    const workerId = req.params.workerId
+    var start = req.query.start
+    var end = req.query.end
+    if (typeof start === "undefined" || typeof end === "undefined") {
+        throw new ClientError("Missing params")
+    }
+    start += " 00:00:00"
+    end += " 23:59:59"
+    var timings = []
+    var intervals = []
+    var gems = []
+    var jobs = []
     try {
-        timings = await dbRunSQL(sqlTime(workerId, start, end));
+        timings = await dbRunSQL(sqlTime(workerId, start, end))
         // console.log(sqlIntervals(workerId, start, end));
-        intervals = await dbRunSQL(sqlIntervals(workerId, start, end));
-        var ids = timings.map(x => x.jobID);
-        gems = await dbRunSQL(sqlGems(workerId, start, end));
-        ids = [...new Set(ids.concat(gems.map(x => x.jobID)))]
-        if (ids.length === 0){
-            respond([], 'skip', res);
-            return;
-            }
-        jobs = await dbRunSQL(sqlIds(ids.join()));
+        intervals = await dbRunSQL(sqlIntervals(workerId, start, end))
+        var ids = timings.map((x) => x.jobID)
+        gems = await dbRunSQL(sqlGems(workerId, start, end))
+        ids = [...new Set(ids.concat(gems.map((x) => x.jobID)))]
+        if (ids.length === 0) {
+            respond([], "skip", res)
+            return
         }
-    catch (ex) {
-        throw new ServerError(ex, [workerId, start, end]);
-        }
+        jobs = await dbRunSQL(sqlIds(ids.join()))
+    } catch (ex) {
+        throw new ServerError(ex, [workerId, start, end])
+    }
 
-    jobs.forEach(job => {
-        job.gems = gems.filter(time => time.jobID === job.id).map(({jobID, ...rest}) => rest);
-        const tt = timings.filter(time => time.jobID === job.id).map(({jobID, ...rest}) => rest);
-        job.times = tt.length === 0? {'secs': 0, 'hours': 0.0, 'time': '00:00:00'}: tt[0]
-        job.intervals = intervals.filter(interval => interval.jobID === job.id).map(({jobID, ...rest}) => rest);
-        })
-    respond(jobs, 'skip', res);
-
-};
-
+    jobs.forEach((job) => {
+        job.gems = gems
+            .filter((time) => time.jobID === job.id)
+            .map(({ jobID, ...rest }) => rest)
+        const tt = timings
+            .filter((time) => time.jobID === job.id)
+            .map(({ jobID, ...rest }) => rest)
+        job.times =
+            tt.length === 0 ? { secs: 0, hours: 0.0, time: "00:00:00" } : tt[0]
+        job.intervals = intervals
+            .filter((interval) => interval.jobID === job.id)
+            .map(({ jobID, ...rest }) => rest)
+    })
+    respond(jobs, "skip", res)
+}
 
 const getRecords = async (req, res) => {
-
-    await dbRunSQL("CALL oldsdb.update_v2();");
-    const table = req.params.tbl.toLowerCase();
-    const tables = getTables();
-    const table_name = tables[table].name;
-    if ( !table_name ) {
-        throw new ServerError('Oooops!!!');
+    await dbRunSQL("CALL oldsdb.update_v2();")
+    const table = req.params.tbl.toLowerCase()
+    const tables = getTables()
+    const table_name = tables[table].name
+    if (!table_name) {
+        throw new ServerError("Oooops!!!")
     }
-    const query = req.query;
+    const query = req.query
     console.log(`\nNew GET - ${table}`)
-    validate({...query,...{[table_name]: true}}, req_schema);
+    validate({ ...query, ...{ [table_name]: true } }, req_schema)
 
-    var where = [];
-    var params = [];
-    const dt = table === "gems" ? "DTS": "StartDTS";
+    var where = []
+    var params = []
+    const dt = table === "gems" ? "DTS" : "StartDTS"
 
-    for ( var key in query ) {
-        switch (key){
+    for (var key in query) {
+        switch (key) {
             case "start":
-                where.push(`${dt} >= ?`);
-                params.push(query[key] + ' 00:00:00');
-                break;
+                where.push(`${dt} >= ?`)
+                params.push(query[key] + " 00:00:00")
+                break
             case "end":
-                where.push(`${dt} <= ?`);
-                params.push(query[key] + ' 23:59:59');
-                break;
+                where.push(`${dt} <= ?`)
+                params.push(query[key] + " 23:59:59")
+                break
             default:
-                where.push(`${key} = ?`);
-                params.push(query[key]);
+                where.push(`${key} = ?`)
+                params.push(query[key])
         }
     }
-//    console.log(JSON.stringify(params));
-    const limit_ = where.length == 0 ? 'LIMIT 100' : ''
-    where = where.length > 0 ? 'WHERE ' + where.join(' AND ') : ''
+    //    console.log(JSON.stringify(params));
+    const limit_ = where.length == 0 ? "LIMIT 100" : ""
+    where = where.length > 0 ? "WHERE " + where.join(" AND ") : ""
     const sql = `SELECT ${tableColumns(table)} FROM ${table_name} ${where} ${limit_};`
-    var data = [];
+    var data = []
     try {
-        data = await dbRunSQL(sql, params);
-        }
-    catch (ex) {
-        throw new ServerError(ex, values);
-        }
+        data = await dbRunSQL(sql, params)
+    } catch (ex) {
+        throw new ServerError(ex, values)
+    }
     if (data.length === 0) {
-        data.push(null);
+        data.push(null)
     }
 
-    respond(data, resp_schema, res);
+    respond(data, resp_schema, res)
     console.log(`  Success: ${data.length}`)
-//    for (var row of data) console.log(JSON.stringify(row));
-};
+    //    for (var row of data) console.log(JSON.stringify(row));
+}
 
 const newRecords = async (req, res) => {
-    let data = req.body;
-    let table = req.params.tbl ? req.params.tbl.toLowerCase() : "notable";
-    console.log(`New POST request - ${table}\n    ${JSON.stringify(data)}`);
-    let table_name;
-    let tables = getTables();
+    let data = req.body
+    let table = req.params.tbl ? req.params.tbl.toLowerCase() : "notable"
+    console.log(`New POST request - ${table}\n    ${JSON.stringify(data)}`)
+    let table_name
+    let tables = getTables()
     try {
-        table_name = tables[table].name;
-        }
-    catch {
-        throw new ClientError(404);
-        }
-    validate(data, 'response');
-    if (!data.request_data){
-        throw new ServerError('No data in request');
-        }
+        table_name = tables[table].name
+    } catch {
+        throw new ClientError(404)
+    }
+    validate(data, "response")
+    if (!data.request_data) {
+        throw new ServerError("No data in request")
+    }
     let columns = []
-    for (let column_name in data.request_data[0]){
-        if (!inArray(tables[table].auto, column_name)){
-        columns.push(column_name);
+    for (let column_name in data.request_data[0]) {
+        if (!inArray(tables[table].auto, column_name)) {
+            columns.push(column_name)
         }
     }
-    if (columns.length === 0){
-        throw new ServerError('No data provided for insert');
+    if (columns.length === 0) {
+        throw new ServerError("No data provided for insert")
     }
-    let column_list = columns.join(', ');
-    let ids = [];
+    let column_list = columns.join(", ")
+    let ids = []
 
-    for (let rownumber in data.request_data){
-        let values = [];
-        for (let column_name in columns){
-            values.push(data.request_data[rownumber][columns[column_name]]);
-            }
+    for (let rownumber in data.request_data) {
+        let values = []
+        for (let column_name in columns) {
+            values.push(data.request_data[rownumber][columns[column_name]])
+        }
         let sql = `INSERT INTO
             ${table_name}(${column_list})
-            VALUES(${Array(columns.length).fill('?').join(',')});`
-        let id = null;
+            VALUES(${Array(columns.length).fill("?").join(",")});`
+        let id = null
         try {
-            id = await dbRunSQL(sql, values);
-            }
-        catch (ex) {
-            throw new ServerError(ex, values);
-            }
-        if (!(id === null) && tables[table].keys.length === 1) {
-            data.request_data[rownumber][tables[table].keys[0]] = id;
-            ids.push(`'${id}'`);
-            }
+            id = await dbRunSQL(sql, values)
+        } catch (ex) {
+            throw new ServerError(ex, values)
         }
-    let data_;
-    if (ids.length >0){
-        let in_ = ids.join(', ');
+        if (!(id === null) && tables[table].keys.length === 1) {
+            data.request_data[rownumber][tables[table].keys[0]] = id
+            ids.push(`'${id}'`)
+        }
+    }
+    let data_
+    if (ids.length > 0) {
+        let in_ = ids.join(", ")
         let sql = `SELECT ${tableColumns(table)}
                FROM ${table_name}
                WHERE ${tables[table].keys[0]} IN (${in_});`
-        data_ = await dbRunSQL(sql);
+        data_ = await dbRunSQL(sql)
     } else {
-        data_ = {"rows": data.request_data.length};
-        }
-    respond(data_, resp_schema, res);
+        data_ = { rows: data.request_data.length }
+    }
+    respond(data_, resp_schema, res)
     console.log(`  Success: ${data_}`)
-};
+}
 
 const updateRecord = async (req, res) => {
-    let data = req.body;
-    let table = req.params.tbl ? req.params.tbl.toLowerCase() : "notable";
-    console.log(`New PUT request - ${table}\n    ${JSON.stringify(data)}`);
-    let table_name;
-    let tables = getTables();
+    let data = req.body
+    let table = req.params.tbl ? req.params.tbl.toLowerCase() : "notable"
+    console.log(`New PUT request - ${table}\n    ${JSON.stringify(data)}`)
+    let table_name
+    let tables = getTables()
 
     try {
-        table_name = tables[table].name;
-        }
-    catch {
-        throw new ClientError(404);
-        }
-    validate(data, 'response');
-    if (!data.request_data){
-        throw new ServerError('No data in request');
-        }
-    data = data.request_data;
-    let changed = 0;
-    for(let rownumber in data){
-        let row = data[rownumber];
-        let set_ = [];
-        let where_ = [];
-        let subst_s = [];
-        let subst_w = [];
-        for (let column_name in row){
-            let key_ = inArray(tables[table].keys, column_name);
-            if (key_){
-                where_.push(`${column_name} = ?`);
-                subst_w.push(row[column_name]);
+        table_name = tables[table].name
+    } catch {
+        throw new ClientError(404)
+    }
+    validate(data, "response")
+    if (!data.request_data) {
+        throw new ServerError("No data in request")
+    }
+    data = data.request_data
+    let changed = 0
+    for (let rownumber in data) {
+        let row = data[rownumber]
+        let set_ = []
+        let where_ = []
+        let subst_s = []
+        let subst_w = []
+        for (let column_name in row) {
+            let key_ = inArray(tables[table].keys, column_name)
+            if (key_) {
+                where_.push(`${column_name} = ?`)
+                subst_w.push(row[column_name])
             } else {
-                set_.push(`${column_name} = ?`);
-                subst_s.push(row[column_name]);
+                set_.push(`${column_name} = ?`)
+                subst_s.push(row[column_name])
             }
-
         }
         let sql = `UPDATE ${table_name}
                 SET ${set_.join(", ")}
                 WHERE ${where_.join(" AND ")};
-                `;
-        try{
-            changed += await dbRunSQL(sql,[...subst_s, ...subst_w]);
-        }
-        catch (ex){
-            throw new ServerError(ex);
+                `
+        try {
+            changed += await dbRunSQL(sql, [...subst_s, ...subst_w])
+        } catch (ex) {
+            throw new ServerError(ex)
         }
     }
-        respond({"rows": changed}, resp_schema, res);
-        console.log(`  Success: ${changed}`)
-};
-
-
+    respond({ rows: changed }, resp_schema, res)
+    console.log(`  Success: ${changed}`)
+}
 
 // V2
 
 const who = async (req) => {
     const regx = new RegExp("(?<=Bearer )[a-fA-F0-9]+")
-    const token = regx.exec(req.get("Authorization"));
+    const token = regx.exec(req.get("Authorization"))
 
-    if ( !token || typeof token[0] === 'undefined') {
-        return {};
-        }
-    const sql = `SELECT id, name, email, role, description FROM oldsdb.whois WHERE token = '${token[0]}';`
-    const user = await dbRunSQL(sql);
-    return user[0];
+    if (!token || typeof token[0] === "undefined") {
+        return {}
     }
+    const sql = `SELECT id, name, email, role, description FROM oldsdb.whois WHERE token = '${token[0]}';`
+    const user = await dbRunSQL(sql)
+    return user[0]
+}
 
 const getLoggedUser = async (req, res) => {
     try {
-        const user = await who(req);
-        respond(user, 'skip', res);
-        }
-    catch (ex) {
-        throw new ServerError(ex, [token]);
-        }
-};
+        const user = await who(req)
+        respond(user, "skip", res)
+    } catch (ex) {
+        throw new ServerError(ex, [token])
+    }
+}
 
 const getUsers = async (req, res) => {
-    const user = await who(req);
+    const user = await who(req)
 
-    if ( user.role === undefined || user.role > 10) {
-        req.query.id = user.id.toString();
-        }
-    req.params.tbl = "users";
-    await getRecords(req, res);
-};
+    if (user.role === undefined || user.role > 10) {
+        req.query.id = user.id.toString()
+    }
+    req.params.tbl = "users"
+    await getRecords(req, res)
+}
 
-
-exports.newRecords = newRecords;
-exports.updateRecord = updateRecord;
-exports.getRecords = getRecords;
-exports.getResults = getResults;
-exports.getLoggedUser = getLoggedUser;
-exports.getUsers = getUsers;
+exports.newRecords = newRecords
+exports.updateRecord = updateRecord
+exports.getRecords = getRecords
+exports.getResults = getResults
+exports.getLoggedUser = getLoggedUser
+exports.getUsers = getUsers

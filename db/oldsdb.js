@@ -1,35 +1,37 @@
-const {ServerError} = require('../errors');
-const {loadSchema, getSchema} = require('../utils/validate.js')
-const db = require('./db').oldsdb;
+const { ServerError } = require("../errors")
+const { loadSchema, getSchema } = require("../utils/validate.js")
+const db = require("./db").oldsdb
 
 const dbRunSQL = async (sql, subst) => {
-    const op = sql.split(" ")[0].toUpperCase();
+    const op = sql.split(" ")[0].toUpperCase()
     try {
-        const [result] = await db.query(sql, subst);
-        let res = null;
+        const [result] = await db.query(sql, subst)
+        let res = null
         switch (op) {
             case "INSERT":
-                res = result ? result.insertId : null;
-                break;
+                res = result ? result.insertId : null
+                break
             case "UPDATE":
-                res = result ? result.affectedRows : null;
+                res = result ? result.affectedRows : null
                 if (res === 0) {
-                    throw new Error(`${op} failed: ${result.message} :: [${subst}]`);
+                    throw new Error(
+                        `${op} failed: ${result.message} :: [${subst}]`
+                    )
                 }
-                break;
+                break
             case "DELETE":
-                res = "OK";
-                break;
+                res = "OK"
+                break
             default:
-                res = result ? result : [];
+                res = result ? result : []
         }
-        return res;
+        return res
     } catch (error) {
-        console.log(`DB ${op} ERROR: `, error.message || error.sqlMessage);
-        console.log("Data    : ", subst);
-        throw `${op} failed: ${error.message || error.sqlMessage}`;
+        console.log(`DB ${op} ERROR: `, error.message || error.sqlMessage)
+        console.log("Data    : ", subst)
+        throw `${op} failed: ${error.message || error.sqlMessage}`
     }
-};
+}
 
 const getColumns = async () => {
     const sql = `
@@ -39,49 +41,59 @@ const getColumns = async () => {
             IF(COLUMN_KEY IN ('PRI'),1,0) as \`key\`,
             IF(EXTRA = 'auto_increment',1,0) as auto
         FROM information_schema.COLUMNS WHERE Table_schema = 'oldsdb';
-        `;
+        `
     try {
-        const [rows] = await db.query(sql);
-        return rows;
+        const [rows] = await db.query(sql)
+        return rows
     } catch (error) {
-        console.log("ERROR : ", error);
-        return [];
+        console.log("ERROR : ", error)
+        return []
     }
-};
+}
 
 const getTables = async () => {
-    let tables = loadSchema('oldsdb/tables.json')
+    let tables = loadSchema("oldsdb/tables.json")
     let columns = await getColumns()
     for (let n in columns) {
-        let column = columns[n];
-        let table = tables[column.tbl.toLowerCase()];
-        if (typeof table === 'undefined') {
+        let column = columns[n]
+        let table = tables[column.tbl.toLowerCase()]
+        if (typeof table === "undefined") {
             console.error(`No table ${column.tbl} found in tables.json`)
         } else {
-            if (column.auto) { table.auto.push(column.col.toLowerCase()) };
-            if (column.key) { table.keys.push(column.col.toLowerCase()) };
-            if (column.null) { table.nulls.push(column.col.toLowerCase()) };
+            if (column.auto) {
+                table.auto.push(column.col.toLowerCase())
+            }
+            if (column.key) {
+                table.keys.push(column.col.toLowerCase())
+            }
+            if (column.null) {
+                table.nulls.push(column.col.toLowerCase())
+            }
         }
     }
     return tables
-};
-
-const tableColumns = (table, schema) => {
-    schema = getSchema(schema ? schema : 'response');
-    let props = schema.definitions[`${table}_row`].properties;
-    if (!props) {
-        throw new ServerError('missing schema');
-    }
-    let columns = [];
-    for (let i in props) {
-        columns.push(i);
-    }
-    return columns.join(', ');
 }
 
-let tables = {};
-getTables().then(res => { tables = res; });
+const tableColumns = (table, schema) => {
+    schema = getSchema(schema ? schema : "response")
+    let props = schema.definitions[`${table}_row`].properties
+    if (!props) {
+        throw new ServerError("missing schema")
+    }
+    let columns = []
+    for (let i in props) {
+        columns.push(i)
+    }
+    return columns.join(", ")
+}
 
-exports.getTables = () => { return tables; };
-exports.tableColumns = tableColumns;
-exports.dbRunSQL = dbRunSQL;
+let tables = {}
+getTables().then((res) => {
+    tables = res
+})
+
+exports.getTables = () => {
+    return tables
+}
+exports.tableColumns = tableColumns
+exports.dbRunSQL = dbRunSQL

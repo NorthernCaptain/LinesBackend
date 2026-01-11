@@ -20,16 +20,20 @@ function router(app) {
         connect,
         reconnect,
     } = require("../services/navalclash/connectService")
+    const { poll, send } = require("../services/navalclash/messageService")
 
     // Phase 1: Connect & Users
     r.post("/connect", connect)
     r.post("/reconnect", reconnect)
 
-    // Phase 2-6 routes will be added as those phases are implemented
+    // Phase 2: Message Queue & Long Polling
+    r.post("/receive", poll)
+    r.post("/send", send)
+
+    // Phase 3-6 routes will be added as those phases are implemented
     // r.post("/ufv", syncProfile)
     // r.post("/uexp", exportProfile)
     // r.post("/uimp", importProfile)
-    // r.post("/receive", poll)
     // r.post("/greeting", greeting)
     // ... etc
 

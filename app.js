@@ -4,6 +4,8 @@ const os = require("os")
 const numWorkers = parseInt(process.env.CLUSTER_WORKERS, 10) || os.cpus().length
 
 if (cluster.isMaster) {
+    const { setupMasterBroker } = require("./services/navalclash/clusterBroker")
+
     let nextWorkerId = 1
 
     console.log(
@@ -20,6 +22,9 @@ if (cluster.isMaster) {
     for (let i = 0; i < numWorkers; i++) {
         forkWorker()
     }
+
+    // Setup Naval Clash cluster broker for message passing
+    setupMasterBroker()
 
     cluster.on("exit", (worker, code, signal) => {
         console.log(

@@ -9,6 +9,11 @@ jest.mock("../services/navalclash/connectService", () => ({
     reconnect: jest.fn((req, res) => res.json({ type: "connected" })),
 }))
 
+jest.mock("../services/navalclash/messageService", () => ({
+    poll: jest.fn((req, res) => res.json({ type: "empty" })),
+    send: jest.fn((req, res) => res.json({ type: "ok", msgId: "1" })),
+}))
+
 const express = require("express")
 const { router } = require("./navalclash")
 
@@ -59,6 +64,36 @@ describe("routes/navalclash", () => {
                 methods: ["post"],
             })
         })
+
+        it("should have receive route", () => {
+            const r = router(mockApp)
+            const routes = r.stack
+                .filter((layer) => layer.route)
+                .map((layer) => ({
+                    path: layer.route.path,
+                    methods: Object.keys(layer.route.methods),
+                }))
+
+            expect(routes).toContainEqual({
+                path: "/receive",
+                methods: ["post"],
+            })
+        })
+
+        it("should have send route", () => {
+            const r = router(mockApp)
+            const routes = r.stack
+                .filter((layer) => layer.route)
+                .map((layer) => ({
+                    path: layer.route.path,
+                    methods: Object.keys(layer.route.methods),
+                }))
+
+            expect(routes).toContainEqual({
+                path: "/send",
+                methods: ["post"],
+            })
+        })
     })
 
     describe("POST /connect", () => {
@@ -93,6 +128,41 @@ describe("routes/navalclash", () => {
             await reconnect(mockReq, mockRes)
 
             expect(mockRes.json).toHaveBeenCalledWith({ type: "connected" })
+        })
+    })
+
+    describe("POST /receive", () => {
+        it("should call poll service", async () => {
+            const { poll } = require("../services/navalclash/messageService")
+
+            const mockReq = { body: { sid: "12345" } }
+            const mockRes = {
+                json: jest.fn(),
+            }
+
+            await poll(mockReq, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "empty" })
+        })
+    })
+
+    describe("POST /send", () => {
+        it("should call send service", async () => {
+            const { send } = require("../services/navalclash/messageService")
+
+            const mockReq = {
+                body: { sid: "12345", msgType: "greeting", data: "test" },
+            }
+            const mockRes = {
+                json: jest.fn(),
+            }
+
+            await send(mockReq, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "ok",
+                msgId: "1",
+            })
         })
     })
 })

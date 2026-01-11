@@ -5,6 +5,7 @@
  */
 
 const { pool } = require("../../db/navalclash")
+const { logger } = require("../../utils/logger")
 
 /**
  * Snowflake-style Session ID Generator
@@ -122,6 +123,8 @@ async function generateUniquePin(conn, name) {
  * @returns {Promise<Object>} User object
  */
 async function getOrCreateUser(conn, body) {
+    const ctx = { name: body.player, uuid: body.uuuid?.substring(0, 8) }
+
     let [rows] = await conn.execute(
         "SELECT * FROM users WHERE uuid = ? AND name = ?",
         [body.uuuid, body.player]
@@ -129,6 +132,10 @@ async function getOrCreateUser(conn, body) {
 
     if (rows.length > 0) {
         const user = rows[0]
+        logger.debug(
+            { ...ctx, uid: user.id },
+            `User found, updating login count to ${user.logins + 1}`
+        )
         await conn.execute(
             `UPDATE users SET
                 logins = logins + 1,
@@ -142,6 +149,7 @@ async function getOrCreateUser(conn, body) {
         return user
     }
 
+    logger.info(ctx, "Creating new user")
     const [result] = await conn.execute(
         `INSERT INTO users (name, uuid, version, lang, last_game_variant, logins)
          VALUES (?, ?, ?, ?, ?, 1)`,
@@ -152,6 +160,8 @@ async function getOrCreateUser(conn, body) {
     const pin = await generateUniquePin(conn, body.player)
     await conn.execute("UPDATE users SET pin = ? WHERE id = ?", [pin, userId])
     ;[rows] = await conn.execute("SELECT * FROM users WHERE id = ?", [userId])
+
+    logger.info({ ...ctx, uid: userId, pin }, "New user created with PIN")
     return rows[0]
 }
 
@@ -244,6 +254,7 @@ async function linkDeviceToUser(conn, userId, deviceId) {
  */
 async function getOrCreateDevice(conn, userId, body) {
     const androidId = body.androidId
+    const ctx = { uid: userId, androidId: androidId?.substring(0, 8) }
 
     const [rows] = await conn.execute(
         "SELECT id FROM devices WHERE android_id = ?",
@@ -253,12 +264,15 @@ async function getOrCreateDevice(conn, userId, body) {
     let deviceId
     if (rows.length > 0) {
         deviceId = rows[0].id
+        logger.debug({ ...ctx, did: deviceId }, "Device found, updating")
         await updateDevice(conn, deviceId, body)
     } else {
         deviceId = await createDevice(conn, body)
+        logger.info({ ...ctx, did: deviceId }, "New device created")
     }
 
     await linkDeviceToUser(conn, userId, deviceId)
+    logger.debug({ ...ctx, did: deviceId }, "Device linked to user")
     return deviceId
 }
 
@@ -273,6 +287,12 @@ async function getOrCreateDevice(conn, userId, body) {
  */
 async function joinExistingSession(conn, session, userId, version) {
     const sessionId = BigInt(session.id)
+    const playerSessionId = sessionId + 1n
+
+    logger.info(
+        { sid: playerSessionId, uid: userId, opponentUid: session.user_one_id },
+        `Joining existing session as player 1, opponent: ${session.user_one_name}`
+    )
 
     await conn.execute(
         `UPDATE game_sessions SET
@@ -285,7 +305,7 @@ async function joinExistingSession(conn, session, userId, version) {
         [userId, version, session.id]
     )
 
-    return sessionId + 1n
+    return playerSessionId
 }
 
 /**
@@ -299,6 +319,11 @@ async function joinExistingSession(conn, session, userId, version) {
  */
 async function createNewSession(conn, userId, version, gameVariant) {
     const sessionId = generateSessionId()
+
+    logger.info(
+        { sid: sessionId, uid: userId, variant: gameVariant },
+        "Creating new waiting session as player 0"
+    )
 
     await conn.execute(
         `INSERT INTO game_sessions
@@ -322,8 +347,17 @@ async function findOrCreateSession(conn, user, body) {
     const gameVariant = body.var || 1
     const version = body.v || 0
     const hasRival = body.rival && body.rival.id
+    const ctx = { uid: user.id, variant: gameVariant }
+
+    if (hasRival) {
+        logger.debug(
+            { ...ctx, rivalId: body.rival.id },
+            "Personal game requested, skipping matchmaking"
+        )
+    }
 
     if (!hasRival) {
+        logger.debug(ctx, "Searching for waiting session")
         const [waitingSessions] = await conn.execute(
             `SELECT gs.*, u.name as user_one_name
              FROM game_sessions gs
@@ -340,6 +374,10 @@ async function findOrCreateSession(conn, user, body) {
         )
 
         if (waitingSessions.length > 0) {
+            logger.debug(
+                { ...ctx, foundSid: waitingSessions[0].id },
+                `Found ${waitingSessions.length} waiting session(s), joining first`
+            )
             const sessionId = await joinExistingSession(
                 conn,
                 waitingSessions[0],
@@ -348,6 +386,7 @@ async function findOrCreateSession(conn, user, body) {
             )
             return { sessionId, isNewSession: false }
         }
+        logger.debug(ctx, "No waiting sessions found")
     }
 
     const sessionId = await createNewSession(
@@ -396,6 +435,13 @@ async function terminateUserSessions(conn, userId) {
            AND status < 10`,
         [SESSION_STATUS_TERMINATED_DUPLICATE, userId, userId]
     )
+
+    if (result.affectedRows > 0) {
+        logger.info(
+            { uid: userId, count: result.affectedRows },
+            `Terminated ${result.affectedRows} active session(s) due to reconnect`
+        )
+    }
     return result.affectedRows
 }
 
@@ -408,8 +454,12 @@ async function terminateUserSessions(conn, userId) {
  */
 async function connect(req, res) {
     const body = req.body
+    const reqCtx = { name: body.player, uuid: body.uuuid?.substring(0, 8) }
+
+    logger.info(reqCtx, "Connect request received")
 
     if (!body.player || !body.uuuid || body.type !== "connect") {
+        logger.warn(reqCtx, "Invalid connect request - missing required fields")
         return res.json({ type: "refused", reason: "Invalid connect request" })
     }
 
@@ -418,18 +468,21 @@ async function connect(req, res) {
         await conn.beginTransaction()
 
         const user = await getOrCreateUser(conn, body)
+        const ctx = { ...reqCtx, uid: user.id }
 
         if (body.androidId) {
             await getOrCreateDevice(conn, user.id, body)
         }
 
         if (user.isbanned) {
+            logger.warn(ctx, "User is banned, refusing connection")
             await conn.commit()
             return res.json({ type: "banned", reason: "User is banned" })
         }
 
         const maintenance = await getConfig(conn, "maintenance_mode")
         if (maintenance && maintenance.int_value) {
+            logger.info(ctx, "Server in maintenance mode, refusing connection")
             await conn.commit()
             return res.json({
                 type: "maintenance",
@@ -440,9 +493,18 @@ async function connect(req, res) {
         // Terminate any existing active sessions for this user
         await terminateUserSessions(conn, user.id)
 
-        const { sessionId } = await findOrCreateSession(conn, user, body)
+        const { sessionId, isNewSession } = await findOrCreateSession(
+            conn,
+            user,
+            body
+        )
 
         await conn.commit()
+
+        logger.info(
+            { ...ctx, sid: sessionId, isNew: isNewSession },
+            `Connect successful, session ${isNewSession ? "created" : "joined"}`
+        )
 
         return res.json({
             type: "connected",
@@ -451,7 +513,7 @@ async function connect(req, res) {
         })
     } catch (error) {
         await conn.rollback()
-        console.error("Connect error:", error)
+        logger.error(reqCtx, "Connect failed with error:", error.message)
         return res.json({ type: "refused", reason: "Server error" })
     } finally {
         conn.release()
@@ -467,24 +529,46 @@ async function connect(req, res) {
  */
 async function reconnect(req, res) {
     const { sid } = req.body
+    const ctx = { sid }
+
+    logger.info(ctx, "Reconnect request received")
+
     if (!sid) {
+        logger.warn({}, "Reconnect failed - no session ID provided")
         return res.json({ type: "refused", reason: "No session ID" })
     }
 
-    const [rows] = await pool.execute(
-        "SELECT * FROM game_sessions WHERE id = ? AND status < 10",
-        [sid]
-    )
+    try {
+        const [rows] = await pool.execute(
+            "SELECT * FROM game_sessions WHERE id = ? AND status < 10",
+            [sid]
+        )
 
-    if (rows.length === 0) {
-        return res.json({
-            type: "refused",
-            errcode: 5,
-            reason: "Session not found",
-        })
+        if (rows.length === 0) {
+            logger.warn(ctx, "Reconnect failed - session not found or finished")
+            return res.json({
+                type: "refused",
+                errcode: 5,
+                reason: "Session not found",
+            })
+        }
+
+        const session = rows[0]
+        logger.info(
+            {
+                ...ctx,
+                status: session.status,
+                uid1: session.user_one_id,
+                uid2: session.user_two_id,
+            },
+            "Reconnect successful"
+        )
+
+        return res.json({ type: "connected", sid: sid })
+    } catch (error) {
+        logger.error(ctx, "Reconnect failed with error:", error.message)
+        return res.json({ type: "refused", reason: "Server error" })
     }
-
-    return res.json({ type: "connected", sid: sid })
 }
 
 module.exports = {

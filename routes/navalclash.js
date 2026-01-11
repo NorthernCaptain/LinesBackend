@@ -21,6 +21,18 @@ function router(app) {
         reconnect,
     } = require("../services/navalclash/connectService")
     const { poll, send } = require("../services/navalclash/messageService")
+    const {
+        greeting,
+        fieldRequest,
+        fieldInfo,
+        shoot,
+        yourTurn,
+        info,
+        chat,
+        finish,
+        dutchMove,
+        shipMove,
+    } = require("../services/navalclash/gameService")
 
     // Phase 1: Connect & Users
     r.post("/connect", connect)
@@ -30,12 +42,22 @@ function router(app) {
     r.post("/receive", poll)
     r.post("/send", send)
 
-    // Phase 3-6 routes will be added as those phases are implemented
+    // Phase 3: Basic Game Flow
+    r.post("/greeting", greeting)
+    r.post("/fldreq", fieldRequest)
+    r.post("/fldinfo", fieldInfo)
+    r.post("/shoot", shoot)
+    r.post("/yourturn", yourTurn)
+    r.post("/info", info)
+    r.post("/chat", chat)
+    r.post("/fin", finish)
+    r.post("/dutch", dutchMove)
+    r.post("/smove", shipMove)
+
+    // Phase 4-6 routes will be added as those phases are implemented
     // r.post("/ufv", syncProfile)
     // r.post("/uexp", exportProfile)
     // r.post("/uimp", importProfile)
-    // r.post("/greeting", greeting)
-    // ... etc
 
     return r
 }

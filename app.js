@@ -37,6 +37,7 @@ if (cluster.isMaster) {
     const { initValidators } = require("./utils/validate")
     const { expressErrorHandler } = require("./errors")
     const { setServers, githubPushEvent } = require("./utils/rebuild")
+    const { requestLogger } = require("./utils/logger")
     const express = require("express")
     const fs = require("fs")
     const https = require("https")
@@ -48,6 +49,7 @@ if (cluster.isMaster) {
     const linesRouterFunc = require("./routes/lines").router
     const oldsRouterFunc = require("./routes/olds").router
     const authRouterFunc = require("./routes/auth").router
+    const navalclashRouterFunc = require("./routes/navalclash").router
 
     const app = express()
     app.oauth = oAuth2Server({
@@ -57,16 +59,23 @@ if (cluster.isMaster) {
         accessTokenLifetime: 3600 * 12,
     })
 
+    const certPath = "etc/letsencrypt/live/lines.navalclash.com/fullchain.pem"
+    const keyPath = "etc/letsencrypt/live/lines.navalclash.com/privkey.pem"
+    const certsExist = fs.existsSync(certPath) && fs.existsSync(keyPath)
+
     app.use(helmet())
-    //redirect all http traffic to https
-    app.use(function (req, res, next) {
-        if (!req.secure) {
-            return res.redirect(
-                ["https://", req.get("Host"), req.baseUrl].join("")
-            )
-        }
-        next()
-    })
+    app.use(requestLogger)
+    //redirect all http traffic to https (only if certs exist)
+    if (certsExist) {
+        app.use(function (req, res, next) {
+            if (!req.secure) {
+                return res.redirect(
+                    ["https://", req.get("Host"), req.baseUrl].join("")
+                )
+            }
+            next()
+        })
+    }
 
     app.use(bodyParser.urlencoded({ extended: true }))
     app.use(bodyParser.json())
@@ -95,6 +104,7 @@ if (cluster.isMaster) {
     app.use("/oldsdb", oldsRouterFunc(app))
     app.use("/", linesRouterFunc(app))
     app.use("/auth", authRouterFunc(app))
+    app.use("/naval/clash/api/v5", navalclashRouterFunc(app))
 
     app.post("/update/on/push", wrap(githubPushEvent))
 
@@ -102,27 +112,34 @@ if (cluster.isMaster) {
 
     initValidators()
 
-    const privateKey = fs.readFileSync(
-        "etc/letsencrypt/live/lines.navalclash.com/privkey.pem",
-        "utf8"
-    )
-    const certificate = fs.readFileSync(
-        "etc/letsencrypt/live/lines.navalclash.com/fullchain.pem",
-        "utf8"
-    )
-    const credentials = { key: privateKey, cert: certificate }
+    let httpsServer = null
+    if (certsExist) {
+        const privateKey = fs.readFileSync(keyPath, "utf8")
+        const certificate = fs.readFileSync(certPath, "utf8")
+        const credentials = { key: privateKey, cert: certificate }
 
-    const httpsServer = https.createServer(credentials, app)
-    httpsServer.listen(8443, "0.0.0.0", (err) => {
-        if (err) {
-            console.error("ERROR: ", err)
-        }
-        console.log(
-            `Server 1.5.0 worker ${workerId} started, UID is now ${process.getuid ? process.getuid() : ""}`
+        httpsServer = https.createServer(credentials, app)
+        httpsServer.listen(8443, "0.0.0.0", (err) => {
+            if (err) {
+                console.error("ERROR: ", err)
+            }
+            console.log(
+                `Server 1.5.0 worker ${workerId} started (HTTPS), UID is now ${process.getuid ? process.getuid() : ""}`
+            )
+        })
+    } else {
+        console.warn(
+            `Warning: SSL certificates not found at ${certPath}. Starting HTTP only.`
         )
+    }
+
+    const httpServer = app.listen(10080, "0.0.0.0", () => {
+        if (!certsExist) {
+            console.log(
+                `Server 1.5.0 worker ${workerId} started (HTTP only), UID is now ${process.getuid ? process.getuid() : ""}`
+            )
+        }
     })
 
-    const httpServer = app.listen(10080, "0.0.0.0")
-
-    setServers([httpServer, httpsServer])
+    setServers(httpsServer ? [httpServer, httpsServer] : [httpServer])
 }

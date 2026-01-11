@@ -4,37 +4,51 @@ Multi-service Express.js backend server (v1.5.0) powering games and applications
 
 ## Overview
 
-LinesBackend hosts three distinct API modules under a single Express.js umbrella:
+LinesBackend hosts four distinct API modules under a single Express.js umbrella:
 
-| Module    | Route Prefix | Purpose                                               |
-| --------- | ------------ | ----------------------------------------------------- |
-| **Lines** | `/`          | Lines puzzle game API - sessions and leaderboards     |
-| **Auth**  | `/auth`      | OAuth 2.0 user authentication                         |
-| **OLDS**  | `/oldsdb`    | Dress-for-dance work tracking (hours, gems, payments) |
+| Module         | Route Prefix          | Purpose                                               |
+| -------------- | --------------------- | ----------------------------------------------------- |
+| **Lines**      | `/`                   | Lines puzzle game API - sessions and leaderboards     |
+| **Auth**       | `/auth`               | OAuth 2.0 user authentication                         |
+| **OLDS**       | `/oldsdb`             | Dress-for-dance work tracking (hours, gems, payments) |
+| **NavalClash** | `/naval/clash/api/v5` | Multiplayer battleship game - matchmaking and battles |
 
 ## Project Structure
 
 ```
 LinesBackend/
 ├── app.js                      # Main Express app entry point
-├── package.json                # Dependencies and scripts
+├── package.json                # Dependencies, scripts, and Jest config
 ├── errors.js                   # Custom error classes (ApiError, ServerError, ClientError)
 │
 ├── routes/                     # HTTP route handlers
 │   ├── lines.js                # Lines game endpoints
 │   ├── auth.js                 # Authentication endpoints
-│   └── olds.js                 # OLDS work tracking endpoints
+│   ├── olds.js                 # OLDS work tracking endpoints
+│   └── navalclash.js           # Naval Clash multiplayer endpoints
 │
 ├── services/                   # Business logic layer
 │   ├── linesService.js         # Game session and scoring logic
 │   ├── authService.js          # User registration and OAuth
-│   └── oldsService.js          # Work tracking logic
+│   ├── oldsService.js          # Work tracking logic
+│   └── navalclash/             # Naval Clash services
+│       └── connectService.js   # Session/matchmaking logic
 │
 ├── db/                         # Database access layer
 │   ├── db.js                   # MySQL connection pools (3 databases)
 │   ├── lines.js                # Game session queries
 │   ├── auth.js                 # User and token queries
-│   └── oldsdb.js               # OLDS queries with dynamic SQL
+│   ├── oldsdb.js               # OLDS queries with dynamic SQL
+│   └── navalclash/             # Naval Clash database layer
+│       ├── pool.js             # MySQL connection pool with BigInt
+│       ├── users.js            # User CRUD operations
+│       ├── devices.js          # Device tracking
+│       ├── sessions.js         # Game session management
+│       ├── messages.js         # Message queue
+│       ├── social.js           # Friends, blocked, search
+│       ├── leaderboard.js      # Top scores
+│       ├── shop.js             # Purchases and inventory
+│       └── index.js            # Re-exports all modules
 │
 ├── utils/                      # Utilities
 │   ├── validate.js             # JSON schema validation (AJV)
@@ -48,7 +62,19 @@ LinesBackend/
 │   └── oldsdb/                 # OLDS schemas
 │
 ├── sql/
-│   └── oldsdb.v2.sql           # Database initialization script
+│   ├── oldsdb.v2.sql           # OLDS database initialization
+│   └── navalclash/             # Naval Clash database scripts
+│       ├── 001_schema.sql      # Database creation
+│       ├── 002_users.sql       # Users table
+│       ├── 003_devices.sql     # Devices table
+│       ├── 004_sessions.sql    # Game sessions
+│       ├── 005_messages.sql    # Message queue
+│       ├── 006_gamefields.sql  # Game field storage
+│       ├── 007_userlist.sql    # Friends/blocked lists
+│       ├── 008_topscore.sql    # Leaderboard
+│       ├── 009_gamesetup.sql   # Configuration
+│       ├── 010_billing.sql     # Purchases/inventory
+│       └── 011_views.sql       # Database views
 │
 ├── auth/
 │   └── authenticator.js        # OAuth middleware
@@ -71,9 +97,10 @@ HTTP Request
 [Virtual Host Static Serving]
     ↓
 [Route Handler]
-    ├── /           → lines.js
-    ├── /auth       → auth.js
-    └── /oldsdb     → olds.js
+    ├── /                   → lines.js
+    ├── /auth               → auth.js
+    ├── /oldsdb             → olds.js
+    └── /naval/clash/api/v5 → navalclash.js
     ↓
 [OAuth Middleware - if required]
     ↓
@@ -233,21 +260,114 @@ Response includes aggregated times, gems earned, work intervals with USD values,
 
 ---
 
+### 4. Naval Clash API
+
+Multiplayer battleship game with real-time matchmaking, game sessions, and social features.
+
+#### Endpoints
+
+| Endpoint     | Method | Description                               |
+| ------------ | ------ | ----------------------------------------- |
+| `/connect`   | POST   | Connect player and find/create game match |
+| `/reconnect` | POST   | Reconnect to existing game session        |
+
+#### Features
+
+- **Snowflake-style Session IDs**: 48-bit timestamp + 10-bit worker + 5-bit sequence + 1-bit player
+- **Player Encoding**: Session ID's last bit encodes player (even = player 0, odd = player 1)
+- **Opponent Lookup**: XOR session ID with 1 to get opponent's session ID
+- **Automatic Matchmaking**: Join waiting sessions or create new ones
+- **Device Tracking**: Track Android devices with model info
+- **Social Features**: Friends list, blocked users, recent opponents
+- **Leaderboards**: Track wins, stars, and rankings
+- **In-app Purchases**: Coin system with inventory management
+
+#### Session ID Format
+
+```
+| 48 bits timestamp | 10 bits worker | 5 bits sequence | 1 bit player |
+```
+
+- Player 0 gets even session ID (base)
+- Player 1 gets odd session ID (base + 1)
+- Opponent's session ID = `mySessionId XOR 1`
+
+#### Example: Connect
+
+```bash
+curl -X POST http://localhost:10080/naval/clash/api/v5/connect \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "connect",
+    "player": "Captain",
+    "uuuid": "device-uuid-123",
+    "var": 1
+  }'
+```
+
+Response:
+
+```json
+{
+    "type": "connected",
+    "sid": "1234567890123456",
+    "u": {
+        "id": 1,
+        "n": "Captain",
+        "pin": 5678,
+        "f": 0,
+        "r": 0,
+        "s": 0,
+        "g": 0,
+        "w": 0,
+        "c": 0
+    }
+}
+```
+
+#### Example: Reconnect
+
+```bash
+curl -X POST http://localhost:10080/naval/clash/api/v5/reconnect \
+  -H "Content-Type: application/json" \
+  -d '{"sid": "1234567890123456"}'
+```
+
+#### Database Tables
+
+| Table        | Purpose                              |
+| ------------ | ------------------------------------ |
+| users        | Player accounts with stats and coins |
+| devices      | Device tracking (Android ID, model)  |
+| user_devices | User-to-device mapping               |
+| sessions     | Game sessions with status            |
+| messages     | Message queue between players        |
+| gamefields   | Stored game board states             |
+| userlists    | Friends and blocked lists            |
+| topscore     | Leaderboard entries                  |
+| gamesetup    | Configuration key-value store        |
+| purchases    | In-app purchase records              |
+| inventory    | User inventory items                 |
+
+---
+
 ## Database Configuration
 
-Three separate MySQL databases with connection pooling:
+Four separate MySQL databases with connection pooling:
 
-| Pool   | Database | Purpose                        |
-| ------ | -------- | ------------------------------ |
-| db     | linesdb  | Lines game sessions and scores |
-| authdb | (auth)   | User accounts and tokens       |
-| oldsdb | (olds)   | Work tracking data             |
+| Pool       | Database   | Purpose                           |
+| ---------- | ---------- | --------------------------------- |
+| db         | linesdb    | Lines game sessions and scores    |
+| authdb     | (auth)     | User accounts and tokens          |
+| oldsdb     | (olds)     | Work tracking data                |
+| navalclash | navalclash | Naval Clash multiplayer game data |
 
 ### Environment Variables
 
 ```bash
 # Cluster configuration
 CLUSTER_WORKERS=4          # Number of worker processes (defaults to CPU count)
+WORKER_ID=1                # Worker ID for session ID generation (auto-assigned in cluster mode)
 
 db_host=localhost
 
@@ -265,6 +385,11 @@ db_olds_password=secret
 db_auth_database=authdb
 db_auth_user=authuser
 db_auth_password=secret
+
+# Naval Clash database
+db_navalclash_database=navalclash
+db_navalclash_user=navaluser
+db_navalclash_password=secret
 ```
 
 ---
@@ -304,6 +429,78 @@ Static file serving based on subdomain:
 | node-oauth2-server | 2.4.0   | OAuth 2.0 implementation     |
 | uuid               | 8.0.0   | UUID generation              |
 | moment             | 2.30.1  | Date/time utilities          |
+
+### Dev Dependencies
+
+| Package  | Version | Purpose           |
+| -------- | ------- | ----------------- |
+| jest     | 29.7.0  | Testing framework |
+| prettier | 3.4.2   | Code formatting   |
+
+---
+
+## Testing
+
+The project uses Jest for unit testing with comprehensive coverage of the Naval Clash module.
+
+### Running Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode (re-run on file changes)
+npm run test:watch
+
+# Run tests with coverage report
+npm run test:coverage
+```
+
+### Test Structure
+
+Each source file has a corresponding `.test.js` file:
+
+```
+db/navalclash/
+├── pool.js          → pool.test.js
+├── users.js         → users.test.js
+├── devices.js       → devices.test.js
+├── sessions.js      → sessions.test.js
+├── messages.js      → messages.test.js
+├── social.js        → social.test.js
+├── leaderboard.js   → leaderboard.test.js
+├── shop.js          → shop.test.js
+└── index.js         → index.test.js
+
+routes/
+└── navalclash.js    → navalclash.test.js
+
+services/navalclash/
+└── connectService.js → connectService.test.js
+```
+
+### Test Coverage
+
+Tests cover:
+
+- **130+ test cases** across 11 test suites
+- Database layer functions with mocked MySQL pool
+- Route configuration and endpoint setup
+- Connect service including session ID generation, matchmaking, and user serialization
+- Error handling and edge cases
+
+### Example Test Output
+
+```
+ PASS  db/navalclash/users.test.js
+ PASS  db/navalclash/sessions.test.js
+ PASS  db/navalclash/messages.test.js
+ PASS  services/navalclash/connectService.test.js
+ ...
+
+Test Suites: 11 passed, 11 total
+Tests:       130 passed, 130 total
+```
 
 ---
 

@@ -286,24 +286,41 @@ async function getOrCreateDevice(conn, userId, body) {
  * @returns {Promise<BigInt>} Session ID for player 1 (odd)
  */
 async function joinExistingSession(conn, session, userId, version) {
-    const sessionId = BigInt(session.id)
+    // session.id from DB could be string, number, or BigInt depending on mysql2 config
+    // Convert to string for consistent handling with BIGINT columns
+    const sessionIdStr = String(session.id)
+    const sessionId = BigInt(sessionIdStr)
     const playerSessionId = sessionId + 1n
 
     logger.info(
-        { sid: playerSessionId, uid: userId, opponentUid: session.user_one_id },
+        { sid: playerSessionId, uid: userId, opponentUid: session.user_one_id, baseSid: sessionIdStr },
         `Joining existing session as player 1, opponent: ${session.user_one_name}`
     )
 
-    await conn.execute(
+    // Use query() instead of execute() for BigInt - prepared statements can have issues
+    // Also add user_two_id IS NULL check as extra safety
+    const [result] = await conn.query(
         `UPDATE game_sessions SET
             user_two_id = ?,
             user_two_connected_at = NOW(3),
             version_two = ?,
             status = 1,
             updated_at = NOW(3)
-         WHERE id = ?`,
-        [userId, version, session.id]
+         WHERE id = ? AND user_two_id IS NULL`,
+        [userId, version, sessionIdStr]
     )
+
+    if (result.affectedRows === 0) {
+        logger.error(
+            { sid: sessionIdStr, uid: userId, affected: result.affectedRows },
+            "Failed to update session - no rows affected! Session may have been taken by another player."
+        )
+    } else {
+        logger.debug(
+            { sid: sessionIdStr, uid: userId, affected: result.affectedRows },
+            "Session updated with player 2"
+        )
+    }
 
     return playerSessionId
 }
@@ -319,17 +336,19 @@ async function joinExistingSession(conn, session, userId, version) {
  */
 async function createNewSession(conn, userId, version, gameVariant) {
     const sessionId = generateSessionId()
+    const sessionIdStr = sessionId.toString()
 
     logger.info(
-        { sid: sessionId, uid: userId, variant: gameVariant },
+        { sid: sessionIdStr, uid: userId, variant: gameVariant },
         "Creating new waiting session as player 0"
     )
 
-    await conn.execute(
+    // Use query() for BigInt - prepared statements can have issues with large integers
+    await conn.query(
         `INSERT INTO game_sessions
             (id, user_one_id, user_one_connected_at, version_one, game_variant, status)
          VALUES (?, ?, NOW(3), ?, ?, 0)`,
-        [sessionId.toString(), userId, version, gameVariant]
+        [sessionIdStr, userId, version, gameVariant]
     )
 
     return sessionId
@@ -564,7 +583,7 @@ async function reconnect(req, res) {
             "Reconnect successful"
         )
 
-        return res.json({ type: "connected", sid: sid })
+        return res.json({ type: "connected", sid: String(sid) })
     } catch (error) {
         logger.error(ctx, "Reconnect failed with error:", error.message)
         return res.json({ type: "refused", reason: "Server error" })

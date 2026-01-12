@@ -33,6 +33,17 @@ function router(app) {
         dutchMove,
         shipMove,
     } = require("../services/navalclash/gameService")
+    const {
+        addRival,
+        deleteRival,
+        getRivals,
+        searchUsers,
+        getRecentOpponents,
+        getOnlineUsers,
+        userMarker,
+    } = require("../services/navalclash/socialService")
+    const { getTopScores } = require("../services/navalclash/leaderboardService")
+    const { getInventory } = require("../services/navalclash/shopService")
 
     // Phase 1: Connect & Users
     r.post("/connect", connect)
@@ -54,7 +65,20 @@ function router(app) {
     r.post("/dutch", dutchMove)
     r.post("/smove", shipMove)
 
-    // Phase 4-6 routes will be added as those phases are implemented
+    // Phase 4: Social Features
+    r.post("/umarker", userMarker)
+    r.post("/uaddrival", addRival)
+    r.post("/udelrival", deleteRival)
+    r.post("/urivals", getRivals)
+    r.post("/usearch", searchUsers)
+    r.post("/ugetrcnt", getRecentOpponents)
+    r.post("/ugetair", getOnlineUsers)
+
+    // Phase 5: Leaderboard & Shop (no Google billing)
+    r.post("/topTen", getTopScores)
+    r.post("/inventory", getInventory)
+
+    // Phase 6 routes will be added as that phase is implemented
     // r.post("/ufv", syncProfile)
     // r.post("/uexp", exportProfile)
     // r.post("/uimp", importProfile)

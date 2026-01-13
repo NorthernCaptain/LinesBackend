@@ -10,44 +10,66 @@ const { logger } = require("../../utils/logger")
 const LIST_TYPE_FRIENDS = 1
 const LIST_TYPE_BLOCKED = 2
 
+// RivalInfo type constants (must match client's RivalInfo.java)
+const RivalInfo = {
+    TYPE_SEARCH: 1,
+    TYPE_RECENT: 2,
+    TYPE_SAVED: 3,      // Friends list
+    TYPE_REJECTED: 4,   // Blocked list
+}
+
 /**
  * Serializes a rival object for API response.
  *
  * @param {Object} row - Database row
  * @returns {Object} Serialized rival
  */
+/**
+ * Serializes a rival/user for client consumption.
+ * Must match RivalInfo.deserializeJSON expected format.
+ *
+ * @param {Object} row - Database row
+ * @returns {Object} Serialized rival in client format
+ */
 function serializeRival(row) {
+    // Calculate elapsed time since last seen (in seconds)
+    // Client expects seconds ago, not a timestamp
+    let lastSeenSecondsAgo = 0
+    if (row.lastseen || row.updated_at) {
+        const date = row.lastseen || row.updated_at
+        const lastSeenTime = new Date(date).getTime()
+        const now = Date.now()
+        lastSeenSecondsAgo = Math.max(0, Math.floor((now - lastSeenTime) / 1000))
+    }
+
     return {
-        id: row.rival_id || row.id,
-        n: row.name,
-        f: row.face,
-        r: row.rank,
-        s: row.stars,
-        g: row.games,
-        w: row.gameswon,
-        uuid: row.uuid,
-        st: row.status,
-        ls: row.lastseen,
+        type: "rnf",                    // Required - client checks this first!
+        id: row.id,                     // User's database ID
+        rid: row.rival_id || row.id,    // Rival ID for list operations
+        n: row.name,                    // Name
+        r: row.rank || 0,               // Rank
+        l: row.lang || "--",            // Language
+        g: row.games || 0,              // Games played
+        gw: row.gameswon || 0,          // Games won
+        d: row.device || "",            // Device name
+        v: row.version || 0,            // Version
+        f: row.face || 0,               // Face/avatar
+        s: lastSeenSecondsAgo,          // Last seen (seconds ago)
+        uid: row.uuid || "",            // UUID
     }
 }
 
 /**
  * Serializes a user object for search results.
+ * Uses serializeRival with TYPE_SEARCH.
  *
  * @param {Object} row - Database row
  * @returns {Object} Serialized user
  */
 function serializeSearchUser(row) {
     return {
-        id: row.id,
-        n: row.name,
-        f: row.face,
-        r: row.rank,
-        s: row.stars,
-        g: row.games,
-        w: row.gameswon,
-        uuid: row.uuid,
-        st: row.status,
+        ...serializeRival(row),
+        t: RivalInfo.TYPE_SEARCH,
     }
 }
 
@@ -177,7 +199,7 @@ async function getRivals(req, res) {
         const [rows] = await pool.execute(
             `SELECT ul.list_type, ul.rival_id,
                     u.id, u.name, u.face, u.rank, u.stars, u.games, u.gameswon,
-                    u.uuid, u.status, u.updated_at as lastseen
+                    u.uuid, u.status, u.lang, u.updated_at as lastseen
              FROM userlists ul
              JOIN users u ON u.id = ul.rival_id
              WHERE ul.user_id = ?
@@ -185,10 +207,11 @@ async function getRivals(req, res) {
             [user.id]
         )
 
-        // Return all rivals with their list type
+        // Return all rivals with their type (mapped to client constants)
         const rivals = rows.map((row) => ({
             ...serializeRival(row),
-            t: row.list_type, // 1=friends, 2=blocked
+            // Map list_type (1=friends, 2=blocked) to RivalInfo type (3=saved, 4=rejected)
+            t: row.list_type === LIST_TYPE_FRIENDS ? RivalInfo.TYPE_SAVED : RivalInfo.TYPE_REJECTED,
         }))
 
         logger.debug(ctx, `Returning ${rivals.length} rivals`)
@@ -211,13 +234,13 @@ async function searchUsersByName(name, pin, maxResults) {
     let query, params
 
     if (pin) {
-        query = `SELECT id, name, face, \`rank\`, stars, games, gameswon, uuid, status
+        query = `SELECT id, name, face, \`rank\`, stars, games, gameswon, uuid, status, lang
                  FROM users WHERE name = ? AND pin = ? LIMIT 1`
         params = [name, pin]
     } else {
         // Use template literal for LIMIT since execute() has issues with LIMIT parameters
         // maxResults is already validated by caller using Math.min()
-        query = `SELECT id, name, face, \`rank\`, stars, games, gameswon, uuid, status
+        query = `SELECT id, name, face, \`rank\`, stars, games, gameswon, uuid, status, lang
                  FROM users WHERE name LIKE ? ORDER BY games DESC LIMIT ${maxResults}`
         params = [`%${name}%`]
     }
@@ -301,7 +324,7 @@ async function getRecentOpponents(req, res) {
                 gs.winner_id,
                 gs.created_at as played_at,
                 u.id, u.name, u.face, u.rank, u.stars, u.games, u.gameswon, u.uuid, u.status,
-                u.updated_at as lastseen
+                u.lang, u.updated_at as lastseen
              FROM game_sessions gs
              JOIN users u ON u.id = CASE WHEN gs.user_one_id = ? THEN gs.user_two_id ELSE gs.user_one_id END
              WHERE (gs.user_one_id = ? OR gs.user_two_id = ?)
@@ -314,8 +337,9 @@ async function getRecentOpponents(req, res) {
 
         const opponents = rows.map((row) => ({
             ...serializeRival(row),
-            won: row.winner_id === user.id ? 1 : 0,
-            pa: row.played_at,
+            t: RivalInfo.TYPE_RECENT,                           // Type = recent opponent
+            iw: row.winner_id === user.id ? 1 : 0,              // I won flag
+            gp: Math.floor(new Date(row.played_at).getTime() / 1000),  // Game played time (seconds)
         }))
 
         logger.debug({ ...ctx, count: opponents.length }, "Returning recent opponents")
@@ -363,18 +387,26 @@ async function getOnlineUsers(req, res) {
             [gameVariant, userId]
         )
 
-        const users = rows.map((row) => ({
-            id: row.user_id,
-            n: row.name,
-            f: row.face,
-            r: row.rank,
-            s: row.stars,
-            g: row.games,
-            w: row.gameswon,
-            uuid: row.uuid,
-            st: row.status,
-            sid: row.session_id.toString(),
-        }))
+        const users = rows.map((row) => {
+            // Map view columns to standard row format for serializeRival
+            const rivalRow = {
+                id: row.user_id,
+                rival_id: row.user_id,
+                name: row.name,
+                face: row.face,
+                rank: row.rank,
+                games: row.games,
+                gameswon: row.gameswon,
+                uuid: row.uuid,
+                lastseen: row.updated_at,
+                lang: row.lang,
+                version: row.version,
+            }
+            return {
+                ...serializeRival(rivalRow),
+                sid: row.session_id.toString(),  // Session ID for invitation
+            }
+        })
 
         logger.debug({ ...ctx, count: users.length }, "Returning online users")
         return res.json({ type: "uair", ar: users })

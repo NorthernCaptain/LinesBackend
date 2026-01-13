@@ -33,7 +33,11 @@ describe("services/navalclash/socialService", () => {
 
     describe("serializeRival", () => {
         it("should serialize rival data correctly", () => {
+            // Use a recent date to test elapsed time calculation
+            const now = Date.now()
+            const oneHourAgo = new Date(now - 60 * 60 * 1000) // 1 hour ago
             const row = {
+                id: 123,
                 rival_id: 123,
                 name: "Player1",
                 face: 5,
@@ -43,22 +47,27 @@ describe("services/navalclash/socialService", () => {
                 gameswon: 60,
                 uuid: "test-uuid",
                 status: 1,
-                lastseen: new Date("2026-01-01"),
+                lastseen: oneHourAgo,
             }
 
             const result = serializeRival(row)
 
-            expect(result).toEqual({
+            // s should be elapsed seconds (approximately 3600 for 1 hour)
+            expect(result.s).toBeGreaterThanOrEqual(3599)
+            expect(result.s).toBeLessThanOrEqual(3601)
+            expect(result).toMatchObject({
+                type: "rnf",
                 id: 123,
+                rid: 123,
                 n: "Player1",
                 f: 5,
                 r: 10,
-                s: 50,
+                l: "--",
                 g: 100,
-                w: 60,
-                uuid: "test-uuid",
-                st: 1,
-                ls: row.lastseen,
+                gw: 60,
+                d: "",
+                v: 0,
+                uid: "test-uuid",
             })
         })
 
@@ -66,6 +75,13 @@ describe("services/navalclash/socialService", () => {
             const row = { id: 456, name: "Test" }
             const result = serializeRival(row)
             expect(result.id).toBe(456)
+            expect(result.rid).toBe(456)
+        })
+
+        it("should include type rnf field", () => {
+            const row = { id: 1, name: "Test" }
+            const result = serializeRival(row)
+            expect(result.type).toBe("rnf")
         })
     })
 
@@ -86,15 +102,20 @@ describe("services/navalclash/socialService", () => {
             const result = serializeSearchUser(row)
 
             expect(result).toEqual({
+                type: "rnf",
                 id: 789,
+                rid: 789,
                 n: "SearchUser",
                 f: 3,
                 r: 5,
-                s: 20,
+                l: "--",
                 g: 30,
-                w: 15,
-                uuid: "search-uuid",
-                st: 0,
+                gw: 15,
+                d: "",
+                v: 0,
+                s: 0,
+                uid: "search-uuid",
+                t: 1, // TYPE_SEARCH
             })
         })
     })
@@ -286,8 +307,8 @@ describe("services/navalclash/socialService", () => {
             const response = mockRes.json.mock.calls[0][0]
             expect(response.type).toBe("usaved")
             expect(response.ar).toHaveLength(3)
-            expect(response.ar[0].t).toBe(1) // friends
-            expect(response.ar[2].t).toBe(2) // blocked
+            expect(response.ar[0].t).toBe(3) // TYPE_SAVED (friends)
+            expect(response.ar[2].t).toBe(4) // TYPE_REJECTED (blocked)
         })
     })
 
@@ -390,6 +411,7 @@ describe("services/navalclash/socialService", () => {
         })
 
         it("should return recent opponents", async () => {
+            const playedAt = new Date("2026-01-10T10:00:00Z")
             mockExecute
                 .mockResolvedValueOnce([[{ id: 1, name: "TestUser" }]]) // User lookup
                 .mockResolvedValueOnce([
@@ -398,14 +420,14 @@ describe("services/navalclash/socialService", () => {
                             rival_id: 10,
                             id: 10,
                             winner_id: 1,
-                            played_at: new Date(),
+                            played_at: playedAt,
                             name: "Opponent1",
                         },
                         {
                             rival_id: 11,
                             id: 11,
                             winner_id: 11,
-                            played_at: new Date(),
+                            played_at: playedAt,
                             name: "Opponent2",
                         },
                     ],
@@ -418,8 +440,10 @@ describe("services/navalclash/socialService", () => {
             const response = mockRes.json.mock.calls[0][0]
             expect(response.type).toBe("urcnt")
             expect(response.ar).toHaveLength(2)
-            expect(response.ar[0].won).toBe(1) // user id=1 won
-            expect(response.ar[1].won).toBe(0) // user id=1 lost
+            expect(response.ar[0].iw).toBe(1) // user id=1 won
+            expect(response.ar[1].iw).toBe(0) // user id=1 lost
+            expect(response.ar[0].t).toBe(2) // TYPE_RECENT
+            expect(response.ar[0].gp).toBe(Math.floor(playedAt.getTime() / 1000)) // game played time
         })
     })
 

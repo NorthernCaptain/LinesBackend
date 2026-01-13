@@ -8,6 +8,7 @@ const mockExecute = jest.fn()
 const mockGetConnection = jest.fn()
 const mockConnection = {
     execute: jest.fn(),
+    query: jest.fn(),
     beginTransaction: jest.fn(),
     commit: jest.fn(),
     rollback: jest.fn(),
@@ -35,6 +36,7 @@ describe("services/navalclash/connectService", () => {
         jest.clearAllMocks()
         mockGetConnection.mockResolvedValue(mockConnection)
         mockConnection.execute.mockReset()
+        mockConnection.query.mockReset()
         mockConnection.beginTransaction.mockReset()
         mockConnection.commit.mockReset()
         mockConnection.rollback.mockReset()
@@ -250,7 +252,9 @@ describe("services/navalclash/connectService", () => {
                 ]) // config
                 .mockResolvedValueOnce([{ affectedRows: 0 }]) // terminate old sessions
                 .mockResolvedValueOnce([[]]) // find waiting session
-                .mockResolvedValueOnce([{ affectedRows: 1 }]) // create session
+
+            // Session creation uses query() instead of execute() for BigInt
+            mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }])
 
             await connect(req, mockRes)
 
@@ -291,6 +295,7 @@ describe("services/navalclash/connectService", () => {
             const waitingSession = {
                 id: "1000",
                 user_one_id: 5,
+                user_one_name: "Player1",
                 status: 0,
             }
 
@@ -302,7 +307,9 @@ describe("services/navalclash/connectService", () => {
                 ]) // config
                 .mockResolvedValueOnce([{ affectedRows: 0 }]) // terminate old sessions
                 .mockResolvedValueOnce([[waitingSession]]) // find waiting session
-                .mockResolvedValueOnce([{ affectedRows: 1 }]) // join session
+
+            // Join session uses query() instead of execute() for BigInt
+            mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }])
 
             await connect(req, mockRes)
 
@@ -370,7 +377,9 @@ describe("services/navalclash/connectService", () => {
                 ]) // config
                 .mockResolvedValueOnce([{ affectedRows: 0 }]) // terminate old sessions
                 .mockResolvedValueOnce([[]]) // find waiting session
-                .mockResolvedValueOnce([{ affectedRows: 1 }]) // create session
+
+            // Session creation uses query() instead of execute() for BigInt
+            mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }])
 
             await connect(req, mockRes)
 

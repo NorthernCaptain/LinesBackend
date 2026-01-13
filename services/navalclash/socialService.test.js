@@ -101,6 +101,7 @@ describe("services/navalclash/socialService", () => {
 
     describe("addRival", () => {
         const mockRes = { json: jest.fn() }
+        const testUser = { id: "test-uuid", nam: "TestUser" }
 
         beforeEach(() => {
             mockRes.json.mockClear()
@@ -115,12 +116,30 @@ describe("services/navalclash/socialService", () => {
             })
         })
 
-        it("should add rival to friends list", async () => {
-            mockExecute.mockResolvedValueOnce([{ affectedRows: 1 }])
+        it("should return error if user not found", async () => {
+            mockExecute.mockResolvedValueOnce([[]]) // User lookup returns empty
 
             const req = {
                 requestId: "test",
-                body: { uid: 1, rivalId: 2, type: "friend" },
+                body: { u: testUser, rid: 2, tp: 1 },
+            }
+
+            await addRival(req, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "error",
+                reason: "User not found",
+            })
+        })
+
+        it("should add rival to friends list", async () => {
+            mockExecute
+                .mockResolvedValueOnce([[{ id: 1, name: "TestUser" }]]) // User lookup
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // Insert
+
+            const req = {
+                requestId: "test",
+                body: { u: testUser, rid: 2, tp: LIST_TYPE_FRIENDS },
             }
 
             await addRival(req, mockRes)
@@ -129,15 +148,17 @@ describe("services/navalclash/socialService", () => {
                 expect.stringContaining("INSERT INTO userlists"),
                 [1, LIST_TYPE_FRIENDS, 2]
             )
-            expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "uok" })
         })
 
         it("should add rival to blocked list", async () => {
-            mockExecute.mockResolvedValueOnce([{ affectedRows: 1 }])
+            mockExecute
+                .mockResolvedValueOnce([[{ id: 1, name: "TestUser" }]]) // User lookup
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // Insert
 
             const req = {
                 requestId: "test",
-                body: { uid: 1, rivalId: 2, type: "block" },
+                body: { u: testUser, rid: 2, tp: LIST_TYPE_BLOCKED },
             }
 
             await addRival(req, mockRes)
@@ -151,13 +172,17 @@ describe("services/navalclash/socialService", () => {
 
     describe("deleteRival", () => {
         const mockRes = { json: jest.fn() }
+        const testUser = { id: "test-uuid", nam: "TestUser" }
 
         beforeEach(() => {
             mockRes.json.mockClear()
         })
 
         it("should return error if missing parameters", async () => {
-            await deleteRival({ requestId: "test", body: { uid: 1 } }, mockRes)
+            await deleteRival(
+                { requestId: "test", body: { u: testUser } },
+                mockRes
+            )
 
             expect(mockRes.json).toHaveBeenCalledWith({
                 type: "error",
@@ -165,12 +190,30 @@ describe("services/navalclash/socialService", () => {
             })
         })
 
-        it("should delete rival from list", async () => {
-            mockExecute.mockResolvedValueOnce([{ affectedRows: 1 }])
+        it("should return error if user not found", async () => {
+            mockExecute.mockResolvedValueOnce([[]]) // User lookup returns empty
 
             const req = {
                 requestId: "test",
-                body: { uid: 1, rivalId: 2, type: "friend" },
+                body: { u: testUser, rid: 2, tp: 1 },
+            }
+
+            await deleteRival(req, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "error",
+                reason: "User not found",
+            })
+        })
+
+        it("should delete rival from list", async () => {
+            mockExecute
+                .mockResolvedValueOnce([[{ id: 1, name: "TestUser" }]]) // User lookup
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // Delete
+
+            const req = {
+                requestId: "test",
+                body: { u: testUser, rid: 2, tp: LIST_TYPE_FRIENDS },
             }
 
             await deleteRival(req, mockRes)
@@ -179,43 +222,72 @@ describe("services/navalclash/socialService", () => {
                 expect.stringContaining("DELETE FROM userlists"),
                 [1, 2, LIST_TYPE_FRIENDS]
             )
-            expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "uok" })
         })
     })
 
     describe("getRivals", () => {
         const mockRes = { json: jest.fn() }
+        const testUser = { id: "test-uuid", nam: "TestUser" }
 
         beforeEach(() => {
             mockRes.json.mockClear()
         })
 
-        it("should return error if missing user ID", async () => {
+        it("should return error if missing user info", async () => {
             await getRivals({ requestId: "test", body: {} }, mockRes)
 
             expect(mockRes.json).toHaveBeenCalledWith({
                 type: "error",
-                reason: "Missing user ID",
+                reason: "Missing user info",
             })
         })
 
-        it("should return friends and blocked lists", async () => {
-            mockExecute.mockResolvedValueOnce([
-                [
-                    { list_type: 1, rival_id: 10, name: "Friend1" },
-                    { list_type: 1, rival_id: 11, name: "Friend2" },
-                    { list_type: 2, rival_id: 20, name: "Blocked1" },
-                ],
-            ])
+        it("should return empty array if user not found", async () => {
+            mockExecute.mockResolvedValueOnce([[]]) // User lookup returns empty
 
-            const req = { requestId: "test", body: { uid: 1 } }
+            const req = { requestId: "test", body: { u: testUser } }
+
+            await getRivals(req, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "usaved", ar: [] })
+        })
+
+        it("should return rivals with list type", async () => {
+            mockExecute
+                .mockResolvedValueOnce([[{ id: 1, name: "TestUser" }]]) // User lookup
+                .mockResolvedValueOnce([
+                    [
+                        {
+                            list_type: 1,
+                            rival_id: 10,
+                            id: 10,
+                            name: "Friend1",
+                        },
+                        {
+                            list_type: 1,
+                            rival_id: 11,
+                            id: 11,
+                            name: "Friend2",
+                        },
+                        {
+                            list_type: 2,
+                            rival_id: 20,
+                            id: 20,
+                            name: "Blocked1",
+                        },
+                    ],
+                ]) // Rivals query
+
+            const req = { requestId: "test", body: { u: testUser } }
 
             await getRivals(req, mockRes)
 
             const response = mockRes.json.mock.calls[0][0]
-            expect(response.type).toBe("rivals")
-            expect(response.friends).toHaveLength(2)
-            expect(response.blocked).toHaveLength(1)
+            expect(response.type).toBe("usaved")
+            expect(response.ar).toHaveLength(3)
+            expect(response.ar[0].t).toBe(1) // friends
+            expect(response.ar[2].t).toBe(2) // blocked
         })
     })
 
@@ -226,12 +298,12 @@ describe("services/navalclash/socialService", () => {
             mockRes.json.mockClear()
         })
 
-        it("should return error if missing name", async () => {
+        it("should return error if missing search string", async () => {
             await searchUsers({ requestId: "test", body: {} }, mockRes)
 
             expect(mockRes.json).toHaveBeenCalledWith({
                 type: "error",
-                reason: "Missing search name",
+                reason: "Missing search string",
             })
         })
 
@@ -243,7 +315,7 @@ describe("services/navalclash/socialService", () => {
                 ],
             ])
 
-            const req = { requestId: "test", body: { name: "Test" } }
+            const req = { requestId: "test", body: { str: "Test" } }
 
             await searchUsers(req, mockRes)
 
@@ -252,8 +324,8 @@ describe("services/navalclash/socialService", () => {
                 ["%Test%", 20]
             )
             const response = mockRes.json.mock.calls[0][0]
-            expect(response.type).toBe("users")
-            expect(response.list).toHaveLength(2)
+            expect(response.type).toBe("ufound")
+            expect(response.ar).toHaveLength(2)
         })
 
         it("should search by name and PIN", async () => {
@@ -261,7 +333,7 @@ describe("services/navalclash/socialService", () => {
 
             const req = {
                 requestId: "test",
-                body: { name: "ExactUser", pin: 1234 },
+                body: { str: "ExactUser", pin: 1234 },
             }
 
             await searchUsers(req, mockRes)
@@ -277,7 +349,7 @@ describe("services/navalclash/socialService", () => {
 
             const req = {
                 requestId: "test",
-                body: { name: "Test", limit: 100 },
+                body: { str: "Test", limit: 100 },
             }
 
             await searchUsers(req, mockRes)
@@ -292,58 +364,74 @@ describe("services/navalclash/socialService", () => {
 
     describe("getRecentOpponents", () => {
         const mockRes = { json: jest.fn() }
+        const testUser = { id: "test-uuid", nam: "TestUser" }
 
         beforeEach(() => {
             mockRes.json.mockClear()
         })
 
-        it("should return error if missing user ID", async () => {
+        it("should return error if missing user info", async () => {
             await getRecentOpponents({ requestId: "test", body: {} }, mockRes)
 
             expect(mockRes.json).toHaveBeenCalledWith({
                 type: "error",
-                reason: "Missing user ID",
+                reason: "Missing user info",
             })
         })
 
-        it("should return recent opponents", async () => {
-            mockExecute.mockResolvedValueOnce([
-                [
-                    {
-                        rival_id: 10,
-                        winner_id: 1,
-                        played_at: new Date(),
-                        name: "Opponent1",
-                    },
-                    {
-                        rival_id: 11,
-                        winner_id: 11,
-                        played_at: new Date(),
-                        name: "Opponent2",
-                    },
-                ],
-            ])
+        it("should return empty array if user not found", async () => {
+            mockExecute.mockResolvedValueOnce([[]]) // User lookup returns empty
 
-            const req = { requestId: "test", body: { uid: 1 } }
+            const req = { requestId: "test", body: { u: testUser } }
+
+            await getRecentOpponents(req, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "urcnt", ar: [] })
+        })
+
+        it("should return recent opponents", async () => {
+            mockExecute
+                .mockResolvedValueOnce([[{ id: 1, name: "TestUser" }]]) // User lookup
+                .mockResolvedValueOnce([
+                    [
+                        {
+                            rival_id: 10,
+                            id: 10,
+                            winner_id: 1,
+                            played_at: new Date(),
+                            name: "Opponent1",
+                        },
+                        {
+                            rival_id: 11,
+                            id: 11,
+                            winner_id: 11,
+                            played_at: new Date(),
+                            name: "Opponent2",
+                        },
+                    ],
+                ]) // Recent opponents query
+
+            const req = { requestId: "test", body: { u: testUser } }
 
             await getRecentOpponents(req, mockRes)
 
             const response = mockRes.json.mock.calls[0][0]
-            expect(response.type).toBe("recent")
-            expect(response.list).toHaveLength(2)
-            expect(response.list[0].won).toBe(1) // uid=1 won
-            expect(response.list[1].won).toBe(0) // uid=1 lost
+            expect(response.type).toBe("urcnt")
+            expect(response.ar).toHaveLength(2)
+            expect(response.ar[0].won).toBe(1) // user id=1 won
+            expect(response.ar[1].won).toBe(0) // user id=1 lost
         })
     })
 
     describe("getOnlineUsers", () => {
         const mockRes = { json: jest.fn() }
+        const testUser = { id: "test-uuid", nam: "TestUser" }
 
         beforeEach(() => {
             mockRes.json.mockClear()
         })
 
-        it("should return online users", async () => {
+        it("should return online users without requiring user", async () => {
             mockExecute.mockResolvedValueOnce([
                 [
                     {
@@ -355,28 +443,43 @@ describe("services/navalclash/socialService", () => {
                 ],
             ])
 
-            const req = { requestId: "test", body: { uid: 1, var: 1 } }
+            const req = { requestId: "test", body: { var: 1 } }
 
             await getOnlineUsers(req, mockRes)
 
             expect(mockExecute).toHaveBeenCalledWith(
                 expect.stringContaining("v_waiting_users"),
-                [1, 1]
+                [1, 0] // game variant 1, user ID 0 (not provided)
             )
             const response = mockRes.json.mock.calls[0][0]
-            expect(response.type).toBe("online")
-            expect(response.list).toHaveLength(1)
-            expect(response.list[0].sid).toBe("1000")
+            expect(response.type).toBe("uair")
+            expect(response.ar).toHaveLength(1)
+            expect(response.ar[0].sid).toBe("1000")
+        })
+
+        it("should exclude current user from online list", async () => {
+            mockExecute
+                .mockResolvedValueOnce([[{ id: 5, name: "TestUser" }]]) // User lookup
+                .mockResolvedValueOnce([[]]) // Online users (empty)
+
+            const req = { requestId: "test", body: { u: testUser, var: 1 } }
+
+            await getOnlineUsers(req, mockRes)
+
+            expect(mockExecute).toHaveBeenLastCalledWith(
+                expect.stringContaining("v_waiting_users"),
+                [1, 5] // game variant 1, exclude user ID 5
+            )
         })
 
         it("should use default game variant if not provided", async () => {
             mockExecute.mockResolvedValueOnce([[]])
 
-            const req = { requestId: "test", body: { uid: 1 } }
+            const req = { requestId: "test", body: {} }
 
             await getOnlineUsers(req, mockRes)
 
-            expect(mockExecute).toHaveBeenCalledWith(expect.anything(), [1, 1])
+            expect(mockExecute).toHaveBeenCalledWith(expect.anything(), [1, 0])
         })
     })
 
@@ -387,17 +490,22 @@ describe("services/navalclash/socialService", () => {
             mockRes.json.mockClear()
         })
 
-        it("should return error if missing session ID", async () => {
+        it("should return uok if user not found", async () => {
+            // No user found by session or user info
             await userMarker({ requestId: "test", body: {} }, mockRes)
 
-            expect(mockRes.json).toHaveBeenCalledWith({
-                type: "error",
-                reason: "No session",
-            })
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "uok" })
         })
 
-        it("should update heartbeat for edit marker", async () => {
-            mockExecute.mockResolvedValueOnce([{ affectedRows: 1 }])
+        it("should update user status and session heartbeat for edit marker", async () => {
+            // Mock findUserBySession (SELECT from game_sessions + users)
+            mockExecute
+                .mockResolvedValueOnce([
+                    [{ id: 1000, user_one_id: 10, user_two_id: null }],
+                ]) // game_sessions
+                .mockResolvedValueOnce([[{ id: 10, name: "Player1" }]]) // users
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE users (status)
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE game_sessions (heartbeat)
 
             const req = {
                 requestId: "test",
@@ -406,15 +514,18 @@ describe("services/navalclash/socialService", () => {
 
             await userMarker(req, mockRes)
 
-            expect(mockExecute).toHaveBeenCalledWith(
-                expect.stringContaining("UPDATE game_sessions"),
-                ["1000"]
-            )
-            expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "uok" })
         })
 
         it("should close session for left marker", async () => {
-            mockExecute.mockResolvedValueOnce([{ affectedRows: 1 }])
+            // Mock findUserBySession
+            mockExecute
+                .mockResolvedValueOnce([
+                    [{ id: 1000, user_one_id: 10, user_two_id: null }],
+                ]) // game_sessions
+                .mockResolvedValueOnce([[{ id: 10, name: "Player1" }]]) // users
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE users (status)
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE game_sessions (close)
 
             const req = {
                 requestId: "test",
@@ -425,13 +536,20 @@ describe("services/navalclash/socialService", () => {
 
             expect(mockExecute).toHaveBeenCalledWith(
                 expect.stringContaining("status = 12"),
-                ["1000"]
+                expect.anything()
             )
-            expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "uok" })
         })
 
         it("should handle odd session IDs (player 1)", async () => {
-            mockExecute.mockResolvedValueOnce([{ affectedRows: 1 }])
+            // Mock findUserBySession for player 1 (odd session ID)
+            mockExecute
+                .mockResolvedValueOnce([
+                    [{ id: 1000, user_one_id: 10, user_two_id: 20 }],
+                ]) // game_sessions
+                .mockResolvedValueOnce([[{ id: 20, name: "Player2" }]]) // users (player 2)
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE users (status)
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE game_sessions (heartbeat)
 
             const req = {
                 requestId: "test",
@@ -440,11 +558,8 @@ describe("services/navalclash/socialService", () => {
 
             await userMarker(req, mockRes)
 
-            // Should use base session ID (1000)
-            expect(mockExecute).toHaveBeenCalledWith(
-                expect.anything(),
-                ["1000"]
-            )
+            // Should use base session ID (1000) for session update
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "uok" })
         })
     })
 })

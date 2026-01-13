@@ -4,7 +4,7 @@
  * All rights reserved.
  */
 
-const { pool } = require("../../db/navalclash")
+const { pool, SESSION_STATUS } = require("../../db/navalclash")
 const { sendMessage } = require("./messageService")
 const { logger } = require("../../utils/logger")
 
@@ -272,9 +272,13 @@ async function yourTurn(req, res) {
     return sendAndRespond(res, session.sessionId, "yourturn", { time }, ctx)
 }
 
+// Info message types (from InfoMessage.java)
+const MSG_LEFT_SCREEN = 5
+
 /**
  * Info endpoint - sends info message.
  * Client sends: { sid, msg, u }
+ * Special handling for MSG_LEFT_SCREEN (player leaving/surrendering).
  *
  * @param {Object} req - Express request
  * @param {Object} res - Express response
@@ -284,12 +288,125 @@ async function info(req, res) {
     const { sid, msg, u } = req.body
     const ctx = { reqId: req.requestId, sid }
 
-    logger.debug(ctx, "Info request")
+    logger.debug(ctx, "Info request: ", { msg, u })
 
     const session = validateSession(sid, res, ctx)
     if (!session) return
 
+    // Check if this is a "left screen" message (player leaving/surrendering)
+    const msgType = msg?.m
+    if (msgType === MSG_LEFT_SCREEN) {
+        return handlePlayerLeft(req, res, session, msg, u, ctx)
+    }
+
+    // Regular info message - just forward to opponent
     return sendAndRespond(res, session.sessionId, "info", { msg, u }, ctx)
+}
+
+/**
+ * Handles player leaving the game (MSG_LEFT_SCREEN).
+ * If waiting for opponent: terminates session.
+ * If game started: opponent wins by surrender.
+ *
+ * @param {Object} req - Express request
+ * @param {Object} res - Express response
+ * @param {Object} session - Validated session info
+ * @param {Object} msg - Info message
+ * @param {Object} u - User info
+ * @param {Object} ctx - Logging context
+ * @returns {Promise<Object>} JSON response
+ */
+async function handlePlayerLeft(req, res, session, msg, u, ctx) {
+    const conn = await pool.getConnection()
+    try {
+        const [sessions] = await conn.execute(
+            "SELECT * FROM game_sessions WHERE id = ?",
+            [session.baseSessionId.toString()]
+        )
+
+        if (sessions.length === 0) {
+            logger.warn(ctx, "Session not found for player left")
+            return res.json({ type: "ok" })
+        }
+
+        const gameSession = sessions[0]
+
+        // Check if opponent is connected (user_two_id is set and status >= 1)
+        const opponentConnected = gameSession.user_two_id && gameSession.status >= 1
+
+        if (!opponentConnected) {
+            // No opponent yet - just terminate the waiting session
+            logger.info(ctx, "Player left waiting session, terminating")
+            await conn.execute(
+                `UPDATE game_sessions SET
+                    status = ?,
+                    finished_at = NOW(3)
+                 WHERE id = ?`,
+                [SESSION_STATUS.FINISHED_TERMINATED_WAITING, session.baseSessionId.toString()]
+            )
+            return res.json({ type: "ok" })
+        }
+
+        // Game was in progress - opponent wins by surrender
+        logger.info(
+            { ...ctx, player: session.player },
+            "Player surrendered, opponent wins"
+        )
+
+        // Determine winner (the opponent)
+        const winnerId =
+            session.player === 0
+                ? gameSession.user_two_id
+                : gameSession.user_one_id
+
+        await conn.execute(
+            `UPDATE game_sessions SET
+                status = ?,
+                winner_id = ?,
+                finished_at = NOW(3)
+             WHERE id = ?`,
+            [SESSION_STATUS.FINISHED_SURRENDERED, winnerId, session.baseSessionId.toString()]
+        )
+
+        // Update winner stats
+        if (winnerId) {
+            await conn.execute(
+                `UPDATE users SET
+                    games = games + 1,
+                    gameswon = gameswon + 1,
+                    games_web = games_web + 1,
+                    wins_web = wins_web + 1,
+                    stars = stars + 1
+                 WHERE id = ?`,
+                [winnerId]
+            )
+        }
+
+        // Update loser stats
+        const loserId =
+            session.player === 0
+                ? gameSession.user_one_id
+                : gameSession.user_two_id
+        if (loserId) {
+            await conn.execute(
+                `UPDATE users SET
+                    games = games + 1,
+                    games_web = games_web + 1
+                 WHERE id = ?`,
+                [loserId]
+            )
+        }
+
+        // Forward the message to opponent so they know they won
+        await sendMessage(session.sessionId, "info", { msg, u })
+
+        return res.json({ type: "ok" })
+    } catch (error) {
+        logger.error(ctx, "handlePlayerLeft error:", error.message)
+        return res.json({ type: "error", reason: "Server error" })
+    } finally {
+        conn.release()
+    }
 }
 
 /**
@@ -416,7 +533,9 @@ async function finish(req, res) {
 
         const gameSession = sessions[0]
 
-        if (gameSession.status < 10) {
+        // Only update if game is still in progress (status 0 or 1)
+        // Don't overwrite surrender (4), timeout (5,6), or other finish states
+        if (gameSession.status <= 1) {
             const { winnerId, loserId } = determineWinnerLoser(
                 gameSession,
                 session.player,
@@ -425,11 +544,11 @@ async function finish(req, res) {
 
             await conn.execute(
                 `UPDATE game_sessions SET
-                    status = 10,
+                    status = ?,
                     winner_id = ?,
                     finished_at = NOW(3)
                  WHERE id = ?`,
-                [winnerId, session.baseSessionId.toString()]
+                [SESSION_STATUS.FINISHED_OK, winnerId, session.baseSessionId.toString()]
             )
 
             await updateWinnerStats(conn, winnerId)

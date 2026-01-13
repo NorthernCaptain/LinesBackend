@@ -19,6 +19,16 @@ jest.mock("../../db/navalclash", () => ({
         execute: mockExecute,
         getConnection: mockGetConnection,
     },
+    SESSION_STATUS: {
+        IN_PROGRESS: 0,
+        FINISHED_OK: 1,
+        FINISHED_TERMINATED_WAITING: 2,
+        FINISHED_SURRENDERED_AUTO: 3,
+        FINISHED_SURRENDERED: 4,
+        FINISHED_TIMED_OUT_WAITING: 5,
+        FINISHED_TIMED_OUT_PLAYING: 6,
+        FINISHED_TERMINATED_DUPLICATE: 7,
+    },
 }))
 
 jest.mock("./messageService", () => ({
@@ -120,7 +130,7 @@ describe("services/navalclash/gameService", () => {
         const mockRes = { json: jest.fn() }
         const mockReq = {
             requestId: "test123",
-            body: { sid: "1000", json: { name: "Player1" } },
+            body: { sid: "1000", u: { name: "Player1" }, v: 1, ni: "info" },
         }
 
         it("should return error if no session ID", async () => {
@@ -138,7 +148,7 @@ describe("services/navalclash/gameService", () => {
             expect(sendMessage).toHaveBeenCalledWith(
                 1000n,
                 "greeting",
-                { json: { name: "Player1" } }
+                { u: { name: "Player1" }, v: 1, ni: "info" }
             )
             expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
         })
@@ -258,14 +268,13 @@ describe("services/navalclash/gameService", () => {
         it("should send yourturn message", async () => {
             const req = {
                 requestId: "test",
-                body: { sid: "1001", result: "hit" },
+                body: { sid: "1001", time: 5000 },
             }
 
             await yourTurn(req, mockRes)
 
             expect(sendMessage).toHaveBeenCalledWith(1001n, "yourturn", {
-                result: "hit",
-                json: undefined,
+                time: 5000,
             })
             expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
         })
@@ -350,7 +359,7 @@ describe("services/navalclash/gameService", () => {
 
             const req = {
                 requestId: "test",
-                body: { sid: "1000", won: true, score: 100 },
+                body: { sid: "1000", won: true, sc: { score: 100 } },
             }
 
             await finish(req, mockRes)
@@ -358,8 +367,12 @@ describe("services/navalclash/gameService", () => {
             expect(mockConnection.commit).toHaveBeenCalled()
             expect(sendMessage).toHaveBeenCalledWith(1000n, "fin", {
                 won: true,
-                score: 100,
-                json: undefined,
+                u: undefined,
+                sc: { score: 100 },
+                wpl: undefined,
+                ni: undefined,
+                gsi: undefined,
+                sur: undefined,
             })
             expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
         })
@@ -367,7 +380,7 @@ describe("services/navalclash/gameService", () => {
         it("should skip stats update if game already finished", async () => {
             const gameSession = {
                 id: 1000,
-                status: 10,
+                status: 4, // FINISHED_SURRENDERED - already finished by surrender
                 user_one_id: 10,
                 user_two_id: 20,
             }
@@ -376,7 +389,7 @@ describe("services/navalclash/gameService", () => {
 
             const req = {
                 requestId: "test",
-                body: { sid: "1000", won: true, score: 100 },
+                body: { sid: "1000", won: true, sc: { score: 100 } },
             }
 
             await finish(req, mockRes)
@@ -393,13 +406,17 @@ describe("services/navalclash/gameService", () => {
         it("should send dutch message", async () => {
             const req = {
                 requestId: "test",
-                body: { sid: "1000", json: { move: "forward" } },
+                body: { sid: "1000", ocx: 1, ocy: 2, ncx: 3, ncy: 4, or: 0 },
             }
 
             await dutchMove(req, mockRes)
 
             expect(sendMessage).toHaveBeenCalledWith(1000n, "dutch", {
-                json: { move: "forward" },
+                ocx: 1,
+                ocy: 2,
+                ncx: 3,
+                ncy: 4,
+                or: 0,
             })
         })
     })
@@ -410,13 +427,13 @@ describe("services/navalclash/gameService", () => {
         it("should send smove message", async () => {
             const req = {
                 requestId: "test",
-                body: { sid: "1001", json: { ship: 1, dir: "up" } },
+                body: { sid: "1001", ship: { id: 1, dir: "up" } },
             }
 
             await shipMove(req, mockRes)
 
             expect(sendMessage).toHaveBeenCalledWith(1001n, "smove", {
-                json: { ship: 1, dir: "up" },
+                ship: { id: 1, dir: "up" },
             })
         })
     })

@@ -53,33 +53,45 @@ function serializeSearchUser(row) {
 
 /**
  * Add rival endpoint - adds rival to friends or blocked list.
+ * Client sends: { u, rid, tp, var }
+ * - u: current user PlayerInfo (contains id=uuid, nam=name)
+ * - rid: rival user ID (numeric)
+ * - tp: 1 (friends) or 2 (blocked)
  *
  * @param {Object} req - Express request
  * @param {Object} res - Express response
  * @returns {Promise<Object>} JSON response
  */
 async function addRival(req, res) {
-    const { uid, rivalId, type } = req.body
-    const ctx = { reqId: req.requestId, uid, rivalId, type }
+    const { u, rid, tp } = req.body
+    const ctx = { reqId: req.requestId, rid, tp }
 
     logger.debug(ctx, "Add rival request")
 
-    if (!uid || !rivalId) {
+    if (!u || !rid) {
         logger.warn(ctx, "Add rival missing parameters")
         return res.json({ type: "error", reason: "Missing parameters" })
     }
 
-    const listType = type === "block" ? LIST_TYPE_BLOCKED : LIST_TYPE_FRIENDS
+    // Look up user by uuid and name
+    const user = await findUserByInfo(u)
+    if (!user) {
+        logger.warn(ctx, "Add rival - user not found")
+        return res.json({ type: "error", reason: "User not found" })
+    }
+
+    ctx.uid = user.id
+    const listType = tp === LIST_TYPE_BLOCKED ? LIST_TYPE_BLOCKED : LIST_TYPE_FRIENDS
 
     try {
         await pool.execute(
             `INSERT INTO userlists (user_id, list_type, rival_id)
              VALUES (?, ?, ?)
              ON DUPLICATE KEY UPDATE list_type = VALUES(list_type)`,
-            [uid, listType, rivalId]
+            [user.id, listType, rid]
         )
-        logger.info(ctx, `Rival added to ${type === "block" ? "blocked" : "friends"} list`)
-        return res.json({ type: "ok" })
+        logger.info(ctx, `Rival added to ${listType === LIST_TYPE_BLOCKED ? "blocked" : "friends"} list`)
+        return res.json({ type: "uok" })
     } catch (error) {
         logger.error(ctx, "addRival error:", error.message)
         return res.json({ type: "error", reason: "Database error" })
@@ -88,31 +100,43 @@ async function addRival(req, res) {
 
 /**
  * Delete rival endpoint - removes rival from list.
+ * Client sends: { u, rid, tp, var }
+ * - u: current user PlayerInfo (contains id=uuid, nam=name)
+ * - rid: rival user ID (numeric)
+ * - tp: 1 (friends) or 2 (blocked)
  *
  * @param {Object} req - Express request
  * @param {Object} res - Express response
  * @returns {Promise<Object>} JSON response
  */
 async function deleteRival(req, res) {
-    const { uid, rivalId, type } = req.body
-    const ctx = { reqId: req.requestId, uid, rivalId, type }
+    const { u, rid, tp } = req.body
+    const ctx = { reqId: req.requestId, rid, tp }
 
     logger.debug(ctx, "Delete rival request")
 
-    if (!uid || !rivalId) {
+    if (!u || !rid) {
         logger.warn(ctx, "Delete rival missing parameters")
         return res.json({ type: "error", reason: "Missing parameters" })
     }
 
-    const listType = type === "block" ? LIST_TYPE_BLOCKED : LIST_TYPE_FRIENDS
+    // Look up user by uuid and name
+    const user = await findUserByInfo(u)
+    if (!user) {
+        logger.warn(ctx, "Delete rival - user not found")
+        return res.json({ type: "error", reason: "User not found" })
+    }
+
+    ctx.uid = user.id
+    const listType = tp === LIST_TYPE_BLOCKED ? LIST_TYPE_BLOCKED : LIST_TYPE_FRIENDS
 
     try {
         await pool.execute(
             "DELETE FROM userlists WHERE user_id = ? AND rival_id = ? AND list_type = ?",
-            [uid, rivalId, listType]
+            [user.id, rid, listType]
         )
-        logger.info(ctx, `Rival removed from ${type === "block" ? "blocked" : "friends"} list`)
-        return res.json({ type: "ok" })
+        logger.info(ctx, `Rival removed from ${listType === LIST_TYPE_BLOCKED ? "blocked" : "friends"} list`)
+        return res.json({ type: "uok" })
     } catch (error) {
         logger.error(ctx, "deleteRival error:", error.message)
         return res.json({ type: "error", reason: "Database error" })
@@ -121,48 +145,54 @@ async function deleteRival(req, res) {
 
 /**
  * Get rivals endpoint - returns user's friends and blocked lists.
+ * Client sends: { u, var }
+ * - u: current user PlayerInfo (contains id=uuid, nam=name)
+ * Response: { type: "usaved", ar: [...rivals] }
  *
  * @param {Object} req - Express request
  * @param {Object} res - Express response
  * @returns {Promise<Object>} JSON response
  */
 async function getRivals(req, res) {
-    const { uid } = req.body
-    const ctx = { reqId: req.requestId, uid }
+    const { u } = req.body
+    const ctx = { reqId: req.requestId }
 
     logger.debug(ctx, "Get rivals request")
 
-    if (!uid) {
-        logger.warn(ctx, "Get rivals missing user ID")
-        return res.json({ type: "error", reason: "Missing user ID" })
+    if (!u) {
+        logger.warn(ctx, "Get rivals missing user info")
+        return res.json({ type: "error", reason: "Missing user info" })
     }
+
+    // Look up user by uuid and name
+    const user = await findUserByInfo(u)
+    if (!user) {
+        logger.warn(ctx, "Get rivals - user not found")
+        return res.json({ type: "usaved", ar: [] })
+    }
+
+    ctx.uid = user.id
 
     try {
         const [rows] = await pool.execute(
             `SELECT ul.list_type, ul.rival_id,
-                    u.name, u.face, u.rank, u.stars, u.games, u.gameswon,
+                    u.id, u.name, u.face, u.rank, u.stars, u.games, u.gameswon,
                     u.uuid, u.status, u.updated_at as lastseen
              FROM userlists ul
              JOIN users u ON u.id = ul.rival_id
              WHERE ul.user_id = ?
              ORDER BY ul.list_type, u.name`,
-            [uid]
+            [user.id]
         )
 
-        const friends = []
-        const blocked = []
+        // Return all rivals with their list type
+        const rivals = rows.map((row) => ({
+            ...serializeRival(row),
+            t: row.list_type, // 1=friends, 2=blocked
+        }))
 
-        for (const row of rows) {
-            const rival = serializeRival(row)
-            if (row.list_type === LIST_TYPE_FRIENDS) {
-                friends.push(rival)
-            } else {
-                blocked.push(rival)
-            }
-        }
-
-        logger.debug(ctx, `Returning ${friends.length} friends, ${blocked.length} blocked`)
-        return res.json({ type: "rivals", friends, blocked })
+        logger.debug(ctx, `Returning ${rivals.length} rivals`)
+        return res.json({ type: "usaved", ar: rivals })
     } catch (error) {
         logger.error(ctx, "getRivals error:", error.message)
         return res.json({ type: "error", reason: "Database error" })
@@ -196,29 +226,33 @@ async function searchUsersByName(name, pin, maxResults) {
 
 /**
  * Search users endpoint - searches for users by name.
+ * Client sends: { u, str, var }
+ * - u: current user PlayerInfo
+ * - str: search string (name to search for)
+ * Response: { type: "ufound", ar: [...users] }
  *
  * @param {Object} req - Express request
  * @param {Object} res - Express response
  * @returns {Promise<Object>} JSON response
  */
 async function searchUsers(req, res) {
-    const { name, pin, limit } = req.body
-    const ctx = { reqId: req.requestId, name, pin }
+    const { str, pin, limit } = req.body
+    const ctx = { reqId: req.requestId, str, pin }
 
     logger.debug(ctx, "Search users request")
 
-    if (!name) {
-        logger.warn(ctx, "Search users missing name")
-        return res.json({ type: "error", reason: "Missing search name" })
+    if (!str) {
+        logger.warn(ctx, "Search users missing search string")
+        return res.json({ type: "error", reason: "Missing search string" })
     }
 
     const maxResults = Math.min(limit || 20, 50)
 
     try {
-        const rows = await searchUsersByName(name, pin, maxResults)
+        const rows = await searchUsersByName(str, pin, maxResults)
         const users = rows.map(serializeSearchUser)
         logger.debug({ ...ctx, count: users.length }, "Search returned results")
-        return res.json({ type: "users", list: users })
+        return res.json({ type: "ufound", ar: users })
     } catch (error) {
         logger.error(ctx, "searchUsers error:", error.message)
         return res.json({ type: "error", reason: "Database error" })
@@ -227,22 +261,33 @@ async function searchUsers(req, res) {
 
 /**
  * Get recent opponents endpoint - returns recent game opponents.
+ * Client sends: { u, var }
+ * - u: current user PlayerInfo (contains id=uuid, nam=name)
+ * Response: { type: "urcnt", ar: [...opponents] }
  *
  * @param {Object} req - Express request
  * @param {Object} res - Express response
  * @returns {Promise<Object>} JSON response
  */
 async function getRecentOpponents(req, res) {
-    const { uid, limit } = req.body
-    const ctx = { reqId: req.requestId, uid }
+    const { u, limit } = req.body
+    const ctx = { reqId: req.requestId }
 
     logger.debug(ctx, "Get recent opponents request")
 
-    if (!uid) {
-        logger.warn(ctx, "Get recent opponents missing user ID")
-        return res.json({ type: "error", reason: "Missing user ID" })
+    if (!u) {
+        logger.warn(ctx, "Get recent opponents missing user info")
+        return res.json({ type: "error", reason: "Missing user info" })
     }
 
+    // Look up user by uuid and name
+    const user = await findUserByInfo(u)
+    if (!user) {
+        logger.warn(ctx, "Get recent opponents - user not found")
+        return res.json({ type: "urcnt", ar: [] })
+    }
+
+    ctx.uid = user.id
     const maxResults = Math.min(limit || 20, 50)
 
     try {
@@ -251,26 +296,26 @@ async function getRecentOpponents(req, res) {
                 CASE WHEN gs.user_one_id = ? THEN gs.user_two_id ELSE gs.user_one_id END as rival_id,
                 gs.winner_id,
                 gs.created_at as played_at,
-                u.name, u.face, u.rank, u.stars, u.games, u.gameswon, u.uuid, u.status,
+                u.id, u.name, u.face, u.rank, u.stars, u.games, u.gameswon, u.uuid, u.status,
                 u.updated_at as lastseen
              FROM game_sessions gs
              JOIN users u ON u.id = CASE WHEN gs.user_one_id = ? THEN gs.user_two_id ELSE gs.user_one_id END
              WHERE (gs.user_one_id = ? OR gs.user_two_id = ?)
-               AND gs.status >= 10
+               AND gs.status >= 1
                AND gs.user_two_id IS NOT NULL
              ORDER BY gs.created_at DESC
              LIMIT ?`,
-            [uid, uid, uid, uid, maxResults]
+            [user.id, user.id, user.id, user.id, maxResults]
         )
 
         const opponents = rows.map((row) => ({
             ...serializeRival(row),
-            won: row.winner_id === parseInt(uid) ? 1 : 0,
+            won: row.winner_id === user.id ? 1 : 0,
             pa: row.played_at,
         }))
 
         logger.debug({ ...ctx, count: opponents.length }, "Returning recent opponents")
-        return res.json({ type: "recent", list: opponents })
+        return res.json({ type: "urcnt", ar: opponents })
     } catch (error) {
         logger.error(ctx, "getRecentOpponents error:", error.message)
         return res.json({ type: "error", reason: "Database error" })
@@ -279,17 +324,31 @@ async function getRecentOpponents(req, res) {
 
 /**
  * Get online users endpoint - returns users currently waiting for games.
+ * Client sends: { u, var }
+ * - u: current user PlayerInfo (contains id=uuid, nam=name)
+ * - var: game variant
+ * Response: { type: "uair", ar: [...users] }
  *
  * @param {Object} req - Express request
  * @param {Object} res - Express response
  * @returns {Promise<Object>} JSON response
  */
 async function getOnlineUsers(req, res) {
-    const { uid } = req.body
+    const { u } = req.body
     const gameVariant = req.body.var || 1
-    const ctx = { reqId: req.requestId, uid, gameVariant }
+    const ctx = { reqId: req.requestId, gameVariant }
 
     logger.debug(ctx, "Get online users request")
+
+    // Look up user by uuid and name (optional - user might not exist yet)
+    let userId = 0
+    if (u) {
+        const user = await findUserByInfo(u)
+        if (user) {
+            userId = user.id
+            ctx.uid = userId
+        }
+    }
 
     try {
         const [rows] = await pool.execute(
@@ -297,7 +356,7 @@ async function getOnlineUsers(req, res) {
              WHERE game_variant = ? AND user_id != ?
              ORDER BY updated_at DESC
              LIMIT 50`,
-            [gameVariant, uid || 0]
+            [gameVariant, userId]
         )
 
         const users = rows.map((row) => ({
@@ -314,7 +373,7 @@ async function getOnlineUsers(req, res) {
         }))
 
         logger.debug({ ...ctx, count: users.length }, "Returning online users")
-        return res.json({ type: "online", list: users })
+        return res.json({ type: "uair", ar: users })
     } catch (error) {
         logger.error(ctx, "getOnlineUsers error:", error.message)
         return res.json({ type: "error", reason: "Database error" })

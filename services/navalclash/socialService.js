@@ -73,8 +73,8 @@ async function addRival(req, res) {
         return res.json({ type: "error", reason: "Missing parameters" })
     }
 
-    // Look up user by uuid and name
-    const user = await findUserByInfo(u)
+    // Look up user by uuuid (preferred) or legacy u.id
+    const user = await findUserFromRequest(req.body)
     if (!user) {
         logger.warn(ctx, "Add rival - user not found")
         return res.json({ type: "error", reason: "User not found" })
@@ -120,8 +120,8 @@ async function deleteRival(req, res) {
         return res.json({ type: "error", reason: "Missing parameters" })
     }
 
-    // Look up user by uuid and name
-    const user = await findUserByInfo(u)
+    // Look up user by uuuid (preferred) or legacy u.id
+    const user = await findUserFromRequest(req.body)
     if (!user) {
         logger.warn(ctx, "Delete rival - user not found")
         return res.json({ type: "error", reason: "User not found" })
@@ -164,8 +164,8 @@ async function getRivals(req, res) {
         return res.json({ type: "error", reason: "Missing user info" })
     }
 
-    // Look up user by uuid and name
-    const user = await findUserByInfo(u)
+    // Look up user by uuuid (preferred) or legacy u.id
+    const user = await findUserFromRequest(req.body)
     if (!user) {
         logger.warn(ctx, "Get rivals - user not found")
         return res.json({ type: "usaved", ar: [] })
@@ -215,9 +215,11 @@ async function searchUsersByName(name, pin, maxResults) {
                  FROM users WHERE name = ? AND pin = ? LIMIT 1`
         params = [name, pin]
     } else {
+        // Use template literal for LIMIT since execute() has issues with LIMIT parameters
+        // maxResults is already validated by caller using Math.min()
         query = `SELECT id, name, face, \`rank\`, stars, games, gameswon, uuid, status
-                 FROM users WHERE name LIKE ? ORDER BY games DESC LIMIT ?`
-        params = [`%${name}%`, maxResults]
+                 FROM users WHERE name LIKE ? ORDER BY games DESC LIMIT ${maxResults}`
+        params = [`%${name}%`]
     }
 
     const [rows] = await pool.execute(query, params)
@@ -280,8 +282,8 @@ async function getRecentOpponents(req, res) {
         return res.json({ type: "error", reason: "Missing user info" })
     }
 
-    // Look up user by uuid and name
-    const user = await findUserByInfo(u)
+    // Look up user by uuuid (preferred) or legacy u.id
+    const user = await findUserFromRequest(req.body)
     if (!user) {
         logger.warn(ctx, "Get recent opponents - user not found")
         return res.json({ type: "urcnt", ar: [] })
@@ -291,6 +293,8 @@ async function getRecentOpponents(req, res) {
     const maxResults = Math.min(limit || 20, 50)
 
     try {
+        // Use template literal for LIMIT since execute() has issues with LIMIT parameters
+        // maxResults is already validated above using Math.min()
         const [rows] = await pool.execute(
             `SELECT DISTINCT
                 CASE WHEN gs.user_one_id = ? THEN gs.user_two_id ELSE gs.user_one_id END as rival_id,
@@ -304,8 +308,8 @@ async function getRecentOpponents(req, res) {
                AND gs.status >= 1
                AND gs.user_two_id IS NOT NULL
              ORDER BY gs.created_at DESC
-             LIMIT ?`,
-            [user.id, user.id, user.id, user.id, maxResults]
+             LIMIT ${maxResults}`,
+            [user.id, user.id, user.id, user.id]
         )
 
         const opponents = rows.map((row) => ({
@@ -340,10 +344,10 @@ async function getOnlineUsers(req, res) {
 
     logger.debug(ctx, "Get online users request")
 
-    // Look up user by uuid and name (optional - user might not exist yet)
+    // Look up user by uuuid or legacy u.id (optional - user might not exist yet)
     let userId = 0
     if (u) {
-        const user = await findUserByInfo(u)
+        const user = await findUserFromRequest(req.body)
         if (user) {
             userId = user.id
             ctx.uid = userId
@@ -386,8 +390,35 @@ const USER_STATUS_SETUP = 1
 const USER_STATUS_PLAYING = 2
 
 /**
+ * Finds user by uuuid (generated UUID from UserIdentity) and name.
+ * This is the preferred lookup method as uuuid is stable across reinstalls
+ * when signed into Google Games.
+ *
+ * @param {string} uuuid - User UUID from UserIdentity.generateUserUuid()
+ * @param {string} name - Player name
+ * @returns {Promise<Object|null>} User object or null if not found
+ */
+async function findUserByUuuid(uuuid, name) {
+    if (!uuuid || !name) {
+        return null
+    }
+
+    try {
+        const [rows] = await pool.execute(
+            "SELECT * FROM users WHERE uuid = ? AND name = ?",
+            [uuuid, name]
+        )
+        return rows.length > 0 ? rows[0] : null
+    } catch (error) {
+        return null
+    }
+}
+
+/**
  * Finds user by uuid and name from user info object.
  * Client sends: nam (name), id (uuid)
+ * Note: This uses the legacy u.id field which may differ from uuuid.
+ * Prefer findUserByUuuid when uuuid is available.
  *
  * @param {Object} userInfo - User info object from client (u field)
  * @returns {Promise<Object|null>} User object or null if not found
@@ -406,6 +437,26 @@ async function findUserByInfo(userInfo) {
     } catch (error) {
         return null
     }
+}
+
+/**
+ * Finds user from request body, trying uuuid first (preferred) then falling back to u.id.
+ * This handles both new clients (sending uuuid) and legacy clients (only u.id).
+ *
+ * @param {Object} body - Request body containing u (user info) and optionally uuuid
+ * @returns {Promise<Object|null>} User object or null if not found
+ */
+async function findUserFromRequest(body) {
+    const { u, uuuid } = body
+
+    // Prefer uuuid (from UserIdentity) over legacy u.id
+    if (uuuid && u?.nam) {
+        const user = await findUserByUuuid(uuuid, u.nam)
+        if (user) return user
+    }
+
+    // Fallback to legacy u.id for older clients
+    return await findUserByInfo(u)
 }
 
 /**
@@ -483,19 +534,20 @@ async function userMarker(req, res) {
 
     logger.debug(ctx, "User marker request")
 
-    // Try to find user - first by session ID (if provided), then by uuid + name
+    // Try to find user - first by session ID, then by uuuid/u.id
     let user = null
     if (sid) {
         ctx.sid = sid
         try {
             user = await findUserBySession(BigInt(sid))
         } catch (e) {
-            // Invalid session ID format, try by user info
+            // Invalid session ID format, try other methods
         }
     }
 
+    // Look up by uuuid (preferred) or legacy u.id
     if (!user) {
-        user = await findUserByInfo(u)
+        user = await findUserFromRequest(req.body)
     }
 
     if (!user) {

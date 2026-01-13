@@ -321,7 +321,7 @@ describe("services/navalclash/socialService", () => {
 
             expect(mockExecute).toHaveBeenCalledWith(
                 expect.stringContaining("LIKE"),
-                ["%Test%", 20]
+                ["%Test%"]
             )
             const response = mockRes.json.mock.calls[0][0]
             expect(response.type).toBe("ufound")
@@ -354,10 +354,10 @@ describe("services/navalclash/socialService", () => {
 
             await searchUsers(req, mockRes)
 
-            // Should cap at 50
+            // Should cap at 50 - LIMIT is embedded in SQL string
             expect(mockExecute).toHaveBeenCalledWith(
-                expect.anything(),
-                ["%Test%", 50]
+                expect.stringContaining("LIMIT 50"),
+                ["%Test%"]
             )
         })
     })

@@ -316,10 +316,10 @@ async function getRecentOpponents(req, res) {
     const maxResults = Math.min(limit || 20, 50)
 
     try {
-        // Use template literal for LIMIT since execute() has issues with LIMIT parameters
-        // maxResults is already validated above using Math.min()
+        // Game history - show all games with opponent info (same opponent can appear multiple times)
+        // LIMIT is embedded in SQL since execute() has issues with LIMIT parameters
         const [rows] = await pool.execute(
-            `SELECT DISTINCT
+            `SELECT
                 CASE WHEN gs.user_one_id = ? THEN gs.user_two_id ELSE gs.user_one_id END as rival_id,
                 gs.winner_id,
                 gs.created_at as played_at,
@@ -351,11 +351,16 @@ async function getRecentOpponents(req, res) {
 }
 
 /**
- * Get online users endpoint - returns users currently waiting for games.
+ * Get online users endpoint - returns users currently online (waiting + playing).
  * Client sends: { u, var }
  * - u: current user PlayerInfo (contains id=uuid, nam=name)
  * - var: game variant
  * Response: { type: "uair", ar: [...users] }
+ *
+ * Users are returned with special last_seen values:
+ * - -1: Currently playing
+ * - -2: Setting up ships
+ * - >0: Seconds since last seen
  *
  * @param {Object} req - Express request
  * @param {Object} res - Express response
@@ -380,33 +385,30 @@ async function getOnlineUsers(req, res) {
 
     try {
         const [rows] = await pool.execute(
-            `SELECT * FROM v_waiting_users
+            `SELECT * FROM v_online_users
              WHERE game_variant = ? AND user_id != ?
-             ORDER BY updated_at DESC
+             ORDER BY is_playing ASC, updated_at DESC
              LIMIT 50`,
             [gameVariant, userId]
         )
 
-        const users = rows.map((row) => {
-            // Map view columns to standard row format for serializeRival
-            const rivalRow = {
-                id: row.user_id,
-                rival_id: row.user_id,
-                name: row.name,
-                face: row.face,
-                rank: row.rank,
-                games: row.games,
-                gameswon: row.gameswon,
-                uuid: row.uuid,
-                lastseen: row.updated_at,
-                lang: row.lang,
-                version: row.version,
-            }
-            return {
-                ...serializeRival(rivalRow),
-                sid: row.session_id.toString(),  // Session ID for invitation
-            }
-        })
+        const users = rows.map((row) => ({
+            type: "rnf",
+            id: row.user_id,
+            rid: row.user_id,
+            n: row.name,
+            r: row.rank || 0,
+            l: row.lang || "--",
+            g: row.games || 0,
+            gw: row.gameswon || 0,
+            d: "",
+            v: row.version || 0,
+            f: row.face || 0,
+            s: row.last_seen,                               // -1=playing, -2=setup, >0=seconds ago
+            uid: row.uuid || "",
+            sid: row.is_playing ? null : row.session_id.toString(),  // Session ID only for waiting users
+            ip: row.is_playing,                             // Is playing flag
+        }))
 
         logger.debug({ ...ctx, count: users.length }, "Returning online users")
         return res.json({ type: "uair", ar: users })

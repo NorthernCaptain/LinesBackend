@@ -463,6 +463,8 @@ describe("services/navalclash/socialService", () => {
                         session_id: 1000n,
                         name: "WaitingUser",
                         face: 1,
+                        last_seen: -2,  // Setting up
+                        is_playing: 0,
                     },
                 ],
             ])
@@ -472,13 +474,15 @@ describe("services/navalclash/socialService", () => {
             await getOnlineUsers(req, mockRes)
 
             expect(mockExecute).toHaveBeenCalledWith(
-                expect.stringContaining("v_waiting_users"),
+                expect.stringContaining("v_online_users"),
                 [1, 0] // game variant 1, user ID 0 (not provided)
             )
             const response = mockRes.json.mock.calls[0][0]
             expect(response.type).toBe("uair")
             expect(response.ar).toHaveLength(1)
             expect(response.ar[0].sid).toBe("1000")
+            expect(response.ar[0].s).toBe(-2)  // Setting up
+            expect(response.ar[0].ip).toBe(0)  // Not playing
         })
 
         it("should exclude current user from online list", async () => {
@@ -491,7 +495,7 @@ describe("services/navalclash/socialService", () => {
             await getOnlineUsers(req, mockRes)
 
             expect(mockExecute).toHaveBeenLastCalledWith(
-                expect.stringContaining("v_waiting_users"),
+                expect.stringContaining("v_online_users"),
                 [1, 5] // game variant 1, exclude user ID 5
             )
         })
@@ -504,6 +508,30 @@ describe("services/navalclash/socialService", () => {
             await getOnlineUsers(req, mockRes)
 
             expect(mockExecute).toHaveBeenCalledWith(expect.anything(), [1, 0])
+        })
+
+        it("should return playing users without session ID", async () => {
+            mockExecute.mockResolvedValueOnce([
+                [
+                    {
+                        user_id: 10,
+                        session_id: 1000n,
+                        name: "PlayingUser",
+                        face: 1,
+                        last_seen: -1,  // Currently playing
+                        is_playing: 1,
+                    },
+                ],
+            ])
+
+            const req = { requestId: "test", body: { var: 1 } }
+
+            await getOnlineUsers(req, mockRes)
+
+            const response = mockRes.json.mock.calls[0][0]
+            expect(response.ar[0].sid).toBeNull()  // No session ID for playing users
+            expect(response.ar[0].s).toBe(-1)  // Currently playing
+            expect(response.ar[0].ip).toBe(1)  // Is playing
         })
     })
 

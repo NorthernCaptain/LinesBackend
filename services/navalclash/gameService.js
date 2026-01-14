@@ -4,7 +4,13 @@
  * All rights reserved.
  */
 
-const { pool, SESSION_STATUS } = require("../../db/navalclash")
+const {
+    pool,
+    SESSION_STATUS,
+    dbLogTrainingShot,
+    dbGetTrainingShotCount,
+    dbFinalizeTrainingGame,
+} = require("../../db/navalclash")
 const { sendMessage } = require("./messageService")
 const { logger } = require("../../utils/logger")
 
@@ -169,7 +175,16 @@ async function fieldInfo(req, res) {
     } = req.body
     const ctx = { reqId: req.requestId, sid }
 
-    logger.debug(ctx, "Field info request")
+    logger.debug(
+        {
+            ...ctx,
+            jsonType: typeof json,
+            jsonKeys: json ? Object.keys(json) : [],
+            hasShips: json?.ships ? json.ships.length : 0,
+            jsonSample: json ? JSON.stringify(json).substring(0, 500) : null,
+        },
+        "Field info request with data"
+    )
 
     if (!json) {
         logger.warn(ctx, "Field info missing json data")
@@ -248,6 +263,27 @@ async function shoot(req, res) {
     if (!session) return
 
     await incrementMoveCount(session.baseSessionId, session.player, ctx)
+
+    // Log shot coordinates for training data
+    // Results are computed at export time using ship placements from gamefields
+    const shotNumber = await dbGetTrainingShotCount(session.baseSessionId)
+    const trainingData = {
+        gameId: session.baseSessionId,
+        shotNumber: shotNumber + 1,
+        shooterPlayer: session.player + 1,
+        targetX: cx,
+        targetY: cy,
+    }
+    logger.debug(
+        {
+            ...ctx,
+            shotNum: shotNumber + 1,
+            shooter: session.player + 1,
+            gameId: session.baseSessionId.toString(),
+        },
+        "Logging training shot"
+    )
+    await dbLogTrainingShot(trainingData, ctx)
 
     return sendAndRespond(res, session.sessionId, "shoot", { cx, cy, time }, ctx)
 }
@@ -563,6 +599,15 @@ async function finish(req, res) {
         }
 
         await conn.commit()
+
+        // Finalize training data after transaction commit
+        // This prevents lock conflicts when both players call finish() simultaneously
+        // If this fails, the training data can still be reconstructed at export time
+        if (gameSession.status <= 1) {
+            dbFinalizeTrainingGame(session.baseSessionId, ctx).catch((err) => {
+                logger.error(ctx, "dbFinalizeTrainingGame failed:", err.message)
+            })
+        }
 
         await sendMessage(session.sessionId, "fin", { won, u, sc, wpl, ni, gsi, sur })
 

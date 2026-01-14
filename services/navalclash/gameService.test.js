@@ -4,8 +4,6 @@
  * All rights reserved.
  */
 
-const mockExecute = jest.fn()
-const mockGetConnection = jest.fn()
 const mockConnection = {
     execute: jest.fn(),
     beginTransaction: jest.fn(),
@@ -16,8 +14,8 @@ const mockConnection = {
 
 jest.mock("../../db/navalclash", () => ({
     pool: {
-        execute: mockExecute,
-        getConnection: mockGetConnection,
+        execute: jest.fn(),
+        getConnection: jest.fn(),
     },
     SESSION_STATUS: {
         IN_PROGRESS: 0,
@@ -29,7 +27,17 @@ jest.mock("../../db/navalclash", () => ({
         FINISHED_TIMED_OUT_PLAYING: 6,
         FINISHED_TERMINATED_DUPLICATE: 7,
     },
+    dbLogTrainingShot: jest.fn().mockResolvedValue(true),
+    dbGetTrainingShotCount: jest.fn().mockResolvedValue(0),
+    dbFinalizeTrainingGame: jest.fn().mockResolvedValue(true),
 }))
+
+const {
+    pool,
+    dbLogTrainingShot,
+    dbGetTrainingShotCount,
+    dbFinalizeTrainingGame,
+} = require("../../db/navalclash")
 
 jest.mock("./messageService", () => ({
     sendMessage: jest.fn().mockResolvedValue(1),
@@ -55,7 +63,7 @@ const { sendMessage } = require("./messageService")
 describe("services/navalclash/gameService", () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        mockGetConnection.mockResolvedValue(mockConnection)
+        pool.getConnection.mockResolvedValue(mockConnection)
     })
 
     describe("validateSession", () => {
@@ -240,7 +248,7 @@ describe("services/navalclash/gameService", () => {
         })
 
         it("should increment move count and send shoot message", async () => {
-            mockExecute.mockResolvedValueOnce([{ affectedRows: 1 }])
+            pool.execute.mockResolvedValueOnce([{ affectedRows: 1 }])
 
             const req = {
                 requestId: "test",
@@ -249,7 +257,7 @@ describe("services/navalclash/gameService", () => {
 
             await shoot(req, mockRes)
 
-            expect(mockExecute).toHaveBeenCalledWith(
+            expect(pool.execute).toHaveBeenCalledWith(
                 expect.stringContaining("UPDATE game_sessions"),
                 ["1000"]
             )

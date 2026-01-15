@@ -355,6 +355,30 @@ async function createNewSession(conn, userId, version, gameVariant) {
 }
 
 /**
+ * Acquires a matchmaking lock for the given game variant.
+ * This prevents race conditions where two players connecting simultaneously
+ * both create their own sessions instead of being matched together.
+ *
+ * @param {Object} conn - Database connection (must be in a transaction)
+ * @param {number} gameVariant - Game variant to lock
+ * @returns {Promise<void>}
+ */
+async function acquireMatchmakingLock(conn, gameVariant) {
+    // This SELECT FOR UPDATE blocks until any other transaction
+    // holding a lock on this variant's row releases it.
+    // If the row doesn't exist, we insert it first (handles new variants).
+    await conn.execute(
+        `INSERT INTO matchmaking_locks (game_variant) VALUES (?)
+         ON DUPLICATE KEY UPDATE game_variant = game_variant`,
+        [gameVariant]
+    )
+    await conn.execute(
+        "SELECT * FROM matchmaking_locks WHERE game_variant = ? FOR UPDATE",
+        [gameVariant]
+    )
+}
+
+/**
  * Finds a waiting session or creates a new one.
  *
  * @param {Object} conn - Database connection
@@ -376,6 +400,12 @@ async function findOrCreateSession(conn, user, body) {
     }
 
     if (!hasRival) {
+        // Acquire matchmaking lock to prevent race conditions.
+        // Without this, two players connecting simultaneously when no
+        // waiting session exists would both create their own sessions.
+        logger.debug(ctx, "Acquiring matchmaking lock")
+        await acquireMatchmakingLock(conn, gameVariant)
+
         logger.debug(ctx, "Searching for waiting session")
         const [waitingSessions] = await conn.execute(
             `SELECT gs.*, u.name as user_one_name
@@ -387,8 +417,7 @@ async function findOrCreateSession(conn, user, body) {
                AND gs.game_variant = ?
                AND gs.updated_at > DATE_SUB(NOW(3), INTERVAL 2 MINUTE)
              ORDER BY gs.created_at ASC
-             LIMIT 1
-             FOR UPDATE`,
+             LIMIT 1`,
             [user.id, gameVariant]
         )
 

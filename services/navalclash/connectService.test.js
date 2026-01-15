@@ -251,6 +251,8 @@ describe("services/navalclash/connectService", () => {
                     [{ name: "maintenance_mode", int_value: 0 }],
                 ]) // config
                 .mockResolvedValueOnce([{ affectedRows: 0 }]) // terminate old sessions
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // matchmaking lock INSERT
+                .mockResolvedValueOnce([[{ game_variant: 1 }]]) // matchmaking lock SELECT FOR UPDATE
                 .mockResolvedValueOnce([[]]) // find waiting session
 
             // Session creation uses query() instead of execute() for BigInt
@@ -306,6 +308,8 @@ describe("services/navalclash/connectService", () => {
                     [{ name: "maintenance_mode", int_value: 0 }],
                 ]) // config
                 .mockResolvedValueOnce([{ affectedRows: 0 }]) // terminate old sessions
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // matchmaking lock INSERT
+                .mockResolvedValueOnce([[{ game_variant: 1 }]]) // matchmaking lock SELECT FOR UPDATE
                 .mockResolvedValueOnce([[waitingSession]]) // find waiting session
 
             // Join session uses query() instead of execute() for BigInt
@@ -376,6 +380,8 @@ describe("services/navalclash/connectService", () => {
                     [{ name: "maintenance_mode", int_value: 0 }],
                 ]) // config
                 .mockResolvedValueOnce([{ affectedRows: 0 }]) // terminate old sessions
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // matchmaking lock INSERT
+                .mockResolvedValueOnce([[{ game_variant: 1 }]]) // matchmaking lock SELECT FOR UPDATE
                 .mockResolvedValueOnce([[]]) // find waiting session
 
             // Session creation uses query() instead of execute() for BigInt

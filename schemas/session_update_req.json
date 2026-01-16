@@ -1,104 +1,80 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://lines.navalclash.com/schemas/session_update_req.json",
-  "type": "object",
-  "title": "/session/update server request",
-  "description": "/session/update server request",
-  "default": {},
-  "examples": [
-    {
-      "uuid": "7b895b4d-3dcd-4b3e-ac46-e009558b485e",
-      "version": "0.7.0",
-      "score": 100,
-      "level": 2,
-      "mode": "easy",
-      "done": 0
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://lines.navalclash.com/schemas/session_update_req.json",
+    "type": "object",
+    "title": "/session/update server request",
+    "description": "/session/update server request",
+    "default": {},
+    "examples": [
+        {
+            "uuid": "7b895b4d-3dcd-4b3e-ac46-e009558b485e",
+            "version": "0.7.0",
+            "score": 100,
+            "level": 2,
+            "mode": "easy",
+            "done": 0
+        }
+    ],
+    "required": ["uuid", "mode", "version", "score", "done"],
+    "additionalProperties": false,
+    "properties": {
+        "uuid": {
+            "$id": "#/properties/uuid",
+            "type": "string",
+            "title": "session uuid",
+            "description": "Game session uuid",
+            "default": "",
+            "examples": ["7b895b4d-3dcd-4b3e-ac46-e009558b485e"]
+        },
+        "version": {
+            "$id": "#/properties/version",
+            "type": "string",
+            "title": "Client version",
+            "description": "Client version",
+            "default": "0.0.0",
+            "examples": ["0.7.0"]
+        },
+        "score": {
+            "$id": "#/properties/score",
+            "type": "integer",
+            "title": "Current game score",
+            "description": "Current game score passed to the server in this update",
+            "default": 0,
+            "examples": [100]
+        },
+        "level": {
+            "$id": "#/properties/level",
+            "type": "integer",
+            "title": "Game level",
+            "description": "Current game level passed to the server in the update request",
+            "default": 0,
+            "examples": [2]
+        },
+        "mode": {
+            "$id": "#/properties/mode",
+            "type": "string",
+            "title": "Game mode",
+            "description": "Game mode used to play this game, should be easy or hard",
+            "default": "",
+            "enum": ["easy", "hard"],
+            "examples": ["easy", "hard"]
+        },
+        "done": {
+            "$id": "#/properties/done",
+            "type": "integer",
+            "title": "Is session done or not, 1 - done or 0 - still not done",
+            "description": "Is session finished or not (1 or 0)",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 1,
+            "examples": [0]
+        },
+        "user": {
+            "$id": "#/properties/user",
+            "type": "string",
+            "title": "User name",
+            "description": "User name who played the game",
+            "examples": ["John"]
+        }
     }
-  ],
-  "required": [
-    "uuid",
-    "mode",
-    "version",
-    "score",
-    "done"
-  ],
-  "additionalProperties": false,
-  "properties": {
-    "uuid": {
-      "$id": "#/properties/uuid",
-      "type": "string",
-      "title": "session uuid",
-      "description": "Game session uuid",
-      "default": "",
-      "examples": [
-        "7b895b4d-3dcd-4b3e-ac46-e009558b485e"
-      ]
-    },
-    "version": {
-      "$id": "#/properties/version",
-      "type": "string",
-      "title": "Client version",
-      "description": "Client version",
-      "default": "0.0.0",
-      "examples": [
-        "0.7.0"
-      ]
-    },
-    "score": {
-      "$id": "#/properties/score",
-      "type": "integer",
-      "title": "Current game score",
-      "description": "Current game score passed to the server in this update",
-      "default": 0,
-      "examples": [
-        100
-      ]
-    },
-    "level": {
-      "$id": "#/properties/level",
-      "type": "integer",
-      "title": "Game level",
-      "description": "Current game level passed to the server in the update request",
-      "default": 0,
-      "examples": [
-        2
-      ]
-    },
-    "mode": {
-      "$id": "#/properties/mode",
-      "type": "string",
-      "title": "Game mode",
-      "description": "Game mode used to play this game, should be easy or hard",
-      "default": "",
-      "enum": [
-        "easy",
-        "hard"
-      ],
-      "examples": [
-        "easy",
-        "hard"
-      ]
-    },
-    "done": {
-      "$id": "#/properties/done",
-      "type": "integer",
-      "title": "Is session done or not, 1 - done or 0 - still not done",
-      "description": "Is session finished or not (1 or 0)",
-      "default": 0,
-      "minimum": 0,
-      "maximum": 1,
-      "examples": [
-        0
-      ]
-    },
-    "user": {
-      "$id": "#/properties/user",
-      "type": "string",
-      "title": "User name",
-      "description": "User name who played the game",
-      "examples": [
-        "John"
-      ]
-    }
-  }
 }

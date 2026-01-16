@@ -1,3 +1,2 @@
-
-exports.registerUser = registerUser;
-exports.loginUser = login;
+exports.registerUser = registerUser
+exports.loginUser = login

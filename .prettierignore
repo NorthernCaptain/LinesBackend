@@ -1,0 +1,6 @@
+**/.git
+**/.svn
+**/.hg
+**/*.yml
+**/node_modules
+.claude/

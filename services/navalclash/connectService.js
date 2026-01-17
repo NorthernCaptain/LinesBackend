@@ -293,7 +293,12 @@ async function joinExistingSession(conn, session, userId, version) {
     const playerSessionId = sessionId + 1n
 
     logger.info(
-        { sid: playerSessionId, uid: userId, opponentUid: session.user_one_id, baseSid: sessionIdStr },
+        {
+            sid: playerSessionId,
+            uid: userId,
+            opponentUid: session.user_one_id,
+            baseSid: sessionIdStr,
+        },
         `Joining existing session as player 1, opponent: ${session.user_one_name}`
     )
 
@@ -367,11 +372,11 @@ async function acquireMatchmakingLock(conn, gameVariant) {
     // This SELECT FOR UPDATE blocks until any other transaction
     // holding a lock on this variant's row releases it.
     // If the row doesn't exist, we insert it first (handles new variants).
-    await conn.execute(
-        `INSERT INTO matchmaking_locks (game_variant) VALUES (?)
-         ON DUPLICATE KEY UPDATE game_variant = game_variant`,
-        [gameVariant]
-    )
+    // await conn.execute(
+    //     `INSERT INTO matchmaking_locks (game_variant) VALUES (?)
+    //      ON DUPLICATE KEY UPDATE game_variant = game_variant`,
+    //     [gameVariant]
+    // )
     await conn.execute(
         "SELECT * FROM matchmaking_locks WHERE game_variant = ? FOR UPDATE",
         [gameVariant]
@@ -480,7 +485,7 @@ async function terminateUserSessions(conn, userId) {
             status = ?,
             finished_at = NOW(3)
          WHERE (user_one_id = ? OR user_two_id = ?)
-           AND status < 10`,
+           AND status < 1`,
         [SESSION_STATUS_TERMINATED_DUPLICATE, userId, userId]
     )
 
@@ -513,6 +518,11 @@ async function connect(req, res) {
 
     const conn = await pool.getConnection()
     try {
+        // Use READ COMMITTED so the session search sees newly committed sessions.
+        // With default REPEATABLE READ, if our transaction starts before another
+        // player commits their session, we won't see it even after acquiring
+        // the matchmaking lock.
+        await conn.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
         await conn.beginTransaction()
 
         const user = await getOrCreateUser(conn, body)

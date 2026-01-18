@@ -389,10 +389,16 @@ async function internalBuy(req, res) {
             `Internal buy: ${itemDetails.join(", ")}`
         )
 
+        const userResponse = buildUserResponse(user, weapons)
+        logger.debug(
+            { ...ctx, we: weapons, coins: newCoins, encodedCoins: userResponse.an },
+            "Sending ibya response"
+        )
+
         return res.json({
             type: "ibya",
             rc: BUY_ERROR.SUCCESS,
-            u: buildUserResponse(user, weapons),
+            u: userResponse,
         })
     } catch (error) {
         await conn.rollback()

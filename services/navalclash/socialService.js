@@ -6,6 +6,7 @@
 
 const { pool } = require("../../db/navalclash")
 const { logger } = require("../../utils/logger")
+const { buildMdfMessage } = require("./gameService")
 
 const LIST_TYPE_FRIENDS = 1
 const LIST_TYPE_BLOCKED = 2
@@ -562,9 +563,9 @@ async function findUserBySession(sessionId) {
  * @returns {Promise<Object>} JSON response
  */
 async function userMarker(req, res) {
-    const { sid, tp, u, v } = req.body
+    const { sid, tp, u, v, pur } = req.body
     const gameVariant = req.body.var
-    const ctx = { reqId: req.requestId, tp }
+    const ctx = { reqId: req.requestId, tp, pur: !!pur }
 
     logger.debug(ctx, "User marker request")
 
@@ -625,6 +626,23 @@ async function userMarker(req, res) {
                      WHERE id = ? AND status IN (0, 1)`,
                     [baseSessionId.toString()]
                 )
+            }
+        }
+
+        // If profile update requested, embed mdf with full user data
+        if (pur) {
+            const conn = await pool.getConnection()
+            try {
+                const mdf = await buildMdfMessage(conn, user.id, v, ctx)
+                if (mdf) {
+                    logger.debug(
+                        { ...ctx, we: mdf.u?.we, coins: mdf.u?.an },
+                        "Returning uok with embedded mdf"
+                    )
+                    return res.json({ type: "uok", mdf })
+                }
+            } finally {
+                conn.release()
             }
         }
 

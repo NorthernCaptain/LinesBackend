@@ -597,8 +597,9 @@ async function reconnect(req, res) {
     }
 
     try {
+        // Only allow reconnecting to active sessions (WAITING or IN_PROGRESS)
         const [rows] = await pool.execute(
-            "SELECT * FROM game_sessions WHERE id = ? AND status < 10",
+            "SELECT * FROM game_sessions WHERE id = ? AND status <= 1",
             [sid]
         )
 

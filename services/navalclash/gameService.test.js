@@ -6,6 +6,7 @@
 
 const mockConnection = {
     execute: jest.fn(),
+    query: jest.fn(),
     beginTransaction: jest.fn(),
     commit: jest.fn(),
     rollback: jest.fn(),
@@ -735,6 +736,7 @@ describe("services/navalclash/gameService", () => {
         beforeEach(() => {
             mockRes.json.mockClear()
             mockConnection.execute.mockReset()
+            mockConnection.query.mockReset()
             mockConnection.beginTransaction.mockReset()
             mockConnection.commit.mockReset()
             mockConnection.rollback.mockReset()
@@ -792,20 +794,23 @@ describe("services/navalclash/gameService", () => {
             mockConnection.execute
                 .mockResolvedValueOnce([]) // SET TRANSACTION ISOLATION LEVEL
                 .mockResolvedValueOnce([[gameSession]]) // SELECT game_sessions FOR UPDATE
-                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE game_sessions
-                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE users (winner stats)
-                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE users (loser stats)
+                // UPDATE uses query(), not execute()
                 .mockResolvedValueOnce([
                     [
                         { id: 10, rank: 3 },
                         { id: 20, rank: 5 },
                     ],
-                ]) // SELECT ranks for coin calc
+                ]) // SELECT ranks (before stats update)
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE users (winner stats)
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE users (loser stats)
                 .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE coins (winner)
                 .mockResolvedValueOnce([[{ coins: 120 }]]) // SELECT new balance (winner)
                 .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE coins (loser)
                 .mockResolvedValueOnce([[{ coins: 99 }]]) // SELECT new balance (loser)
                 .mockResolvedValueOnce([[mockUser]]) // SELECT user for buildMdfMessage
+
+            // Mock for query() - UPDATE game_sessions
+            mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }])
 
             const req = {
                 requestId: "test",
@@ -865,8 +870,12 @@ describe("services/navalclash/gameService", () => {
             mockConnection.execute
                 .mockResolvedValueOnce([]) // SET TRANSACTION ISOLATION LEVEL
                 .mockResolvedValueOnce([[gameSession]]) // SELECT game_sessions FOR UPDATE
+                // UPDATE uses query(), not execute()
                 .mockResolvedValueOnce([[{ coins: 150 }]]) // SELECT coins for this user
                 .mockResolvedValueOnce([[mockUser]]) // SELECT user for buildMdfMessage
+
+            // Mock for query() - UPDATE game_sessions (no match due to status > 1)
+            mockConnection.query.mockResolvedValueOnce([{ affectedRows: 0 }])
 
             const req = {
                 requestId: "test",

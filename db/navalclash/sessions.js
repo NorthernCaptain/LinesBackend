@@ -184,17 +184,17 @@ async function dbGetConfig(name) {
 const SESSION_STATUS = {
     WAITING: 0, // Waiting for second player
     IN_PROGRESS: 1, // Both players connected, game in progress
+    FINISHED_TERMINATED_WAITING: 2, // Waiting session terminated (player left)
+    FINISHED_SURRENDERED_AUTO: 3, // Auto-surrender (opponent disconnected)
+    FINISHED_SURRENDERED: 4, // Player surrendered
+    FINISHED_TIMED_OUT_WAITING: 5, // Waiting session timed out
+    FINISHED_TIMED_OUT_PLAYING: 6, // Playing session timed out
+    FINISHED_TERMINATED_DUPLICATE: 7, // Terminated due to user reconnecting
+    FINISHED_LEFT_OLD: 8, // Old session left
+    FINISHED_NOT_PINGABLE: 9, // Session not pingable
     FINISHED_OK: 10, // Game finished normally
-    FINISHED_TERMINATED_WAITING: 2,
-    FINISHED_SURRENDERED_AUTO: 3,
-    FINISHED_SURRENDERED: 4,
-    FINISHED_TIMED_OUT_WAITING: 5,
-    FINISHED_TIMED_OUT_PLAYING: 6,
-    FINISHED_TERMINATED_DUPLICATE: 7,
-    FINISHED_LEFT_OLD: 8,
-    FINISHED_NOT_PINGABLE: 9,
-    FINISHED_TIMED_BANNED: 10,
-    FINISHED_SLEEP_CHEATER: 11,
+    FINISHED_SLEEP_CHEATER: 11, // Sleep cheater detected
+    FINISHED_TIMED_BANNED: 12, // Banned for timeout
 }
 
 /**
@@ -208,12 +208,14 @@ const SESSION_STATUS = {
 async function dbTerminateUserSessions(userId, conn) {
     const db = conn || pool
     try {
+        // Only terminate sessions that are still active (WAITING or IN_PROGRESS)
+        // Don't touch already-finished sessions (status >= 2)
         const [result] = await db.execute(
             `UPDATE game_sessions SET
                 status = ?,
                 finished_at = NOW(3)
              WHERE (user_one_id = ? OR user_two_id = ?)
-               AND status < 10`,
+               AND status <= 1`,
             [SESSION_STATUS.FINISHED_TERMINATED_DUPLICATE, userId, userId]
         )
         return result.affectedRows

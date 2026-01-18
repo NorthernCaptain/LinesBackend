@@ -23,6 +23,69 @@ function serializeInventoryItem(row) {
 }
 
 /**
+ * Get items list (ils) endpoint - returns available Armory items (weapons).
+ * Called when user opens the Armory screen.
+ *
+ * Response format:
+ * - nm: weapon index as string ("0"=mine, "1"=dutch, "2"=radar, "3"=shuffle, "4"=stealth, "5"=cshield)
+ * - pr: price in coins
+ * - mi: min purchase quantity
+ * - ma: max purchase quantity
+ * - up: unlock price (0 if already unlocked)
+ * - im: "I" for internal (coin purchase), "G" for google play
+ *
+ * @param {Object} req - Express request
+ * @param {Object} res - Express response
+ * @returns {Promise<Object>} JSON response with item list
+ */
+async function getItemsList(req, res) {
+    const { u, lg } = req.body
+    const ctx = { reqId: req.requestId }
+
+    logger.debug(ctx, "Get items list request", { lg, hasUser: !!u })
+
+    if (u) {
+        ctx.userName = u.name
+        ctx.uuid = u.uuid
+        logger.debug(ctx, "Items list requested by user")
+    }
+
+    try {
+        // Get all active armory items (weapons purchasable with coins)
+        const [items] = await pool.execute(
+            `SELECT weapon_index, price, min_qty, max_qty, unlock_price, purchase_type
+             FROM shop_items
+             WHERE is_active = 1
+             ORDER BY sort_order, weapon_index`
+        )
+
+        logger.debug({ ...ctx, itemCount: items.length }, "Returning armory items")
+
+        // Format items for client response
+        const formattedItems = items.map((item) => ({
+            type: "sku",
+            nm: String(item.weapon_index),
+            pr: item.price,
+            mi: item.min_qty,
+            ma: item.max_qty,
+            up: item.unlock_price || 0,
+            im: item.purchase_type || "I",
+        }))
+
+        return res.json({
+            type: "ilsa",
+            its: formattedItems,
+        })
+    } catch (error) {
+        logger.error(ctx, "getItemsList error:", error.message)
+        return res.json({
+            type: "ilsa",
+            its: [],
+        })
+    }
+}
+
+/**
  * Get inventory endpoint - returns user's inventory and coins.
  *
  * @param {Object} req - Express request
@@ -107,6 +170,7 @@ async function getCoins(userId) {
 }
 
 module.exports = {
+    getItemsList,
     getInventory,
     addCoins,
     getCoins,

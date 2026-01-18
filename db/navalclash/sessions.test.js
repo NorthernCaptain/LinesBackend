@@ -210,8 +210,9 @@ describe("db/navalclash/sessions", () => {
 
     describe("SESSION_STATUS", () => {
         it("should export session status constants", () => {
-            expect(SESSION_STATUS.IN_PROGRESS).toBe(0)
-            expect(SESSION_STATUS.FINISHED_OK).toBe(1)
+            expect(SESSION_STATUS.WAITING).toBe(0)
+            expect(SESSION_STATUS.IN_PROGRESS).toBe(1)
+            expect(SESSION_STATUS.FINISHED_OK).toBe(10)
             expect(SESSION_STATUS.FINISHED_TERMINATED_DUPLICATE).toBe(7)
         })
     })

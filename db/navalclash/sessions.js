@@ -182,8 +182,9 @@ async function dbGetConfig(name) {
  * Session finish status codes.
  */
 const SESSION_STATUS = {
-    IN_PROGRESS: 0,
-    FINISHED_OK: 1,
+    WAITING: 0, // Waiting for second player
+    IN_PROGRESS: 1, // Both players connected, game in progress
+    FINISHED_OK: 10, // Game finished normally
     FINISHED_TERMINATED_WAITING: 2,
     FINISHED_SURRENDERED_AUTO: 3,
     FINISHED_SURRENDERED: 4,

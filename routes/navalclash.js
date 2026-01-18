@@ -43,7 +43,10 @@ function router(app) {
         userMarker,
     } = require("../services/navalclash/socialService")
     const { getTopScores } = require("../services/navalclash/leaderboardService")
-    const { getInventory } = require("../services/navalclash/shopService")
+    const {
+        getItemsList,
+        getInventory,
+    } = require("../services/navalclash/shopService")
 
     // Phase 1: Connect & Users
     r.post("/connect", connect)
@@ -76,6 +79,7 @@ function router(app) {
 
     // Phase 5: Leaderboard & Shop (no Google billing)
     r.post("/topTen", getTopScores)
+    r.post("/ils", getItemsList)
     r.post("/inventory", getInventory)
 
     // Phase 6 routes will be added as that phase is implemented

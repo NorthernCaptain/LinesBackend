@@ -13,6 +13,7 @@ jest.mock("../../db/navalclash", () => ({
 }))
 
 const {
+    getItemsList,
     getInventory,
     addCoins,
     getCoins,
@@ -40,6 +41,121 @@ describe("services/navalclash/shopService", () => {
                 id: "torpedo",
                 qty: 5,
                 used: 2,
+            })
+        })
+    })
+
+    describe("getItemsList", () => {
+        const mockRes = { json: jest.fn() }
+
+        beforeEach(() => {
+            mockRes.json.mockClear()
+        })
+
+        it("should return armory weapons", async () => {
+            mockExecute.mockResolvedValueOnce([
+                [
+                    {
+                        weapon_index: 0,
+                        price: 50,
+                        min_qty: 1,
+                        max_qty: 99,
+                        unlock_price: 0,
+                        purchase_type: "I",
+                    },
+                    {
+                        weapon_index: 1,
+                        price: 75,
+                        min_qty: 1,
+                        max_qty: 99,
+                        unlock_price: 0,
+                        purchase_type: "I",
+                    },
+                ],
+            ])
+
+            const req = {
+                requestId: "test",
+                body: { u: { name: "Player", uuid: "abc123" }, lg: "en" },
+            }
+
+            await getItemsList(req, mockRes)
+
+            expect(mockExecute).toHaveBeenCalledTimes(1)
+            const response = mockRes.json.mock.calls[0][0]
+            expect(response.type).toBe("ilsa")
+            expect(response.its).toHaveLength(2)
+            expect(response.its[0]).toEqual({
+                type: "sku",
+                nm: "0",
+                pr: 50,
+                mi: 1,
+                ma: 99,
+                up: 0,
+                im: "I",
+            })
+            expect(response.its[1]).toEqual({
+                type: "sku",
+                nm: "1",
+                pr: 75,
+                mi: 1,
+                ma: 99,
+                up: 0,
+                im: "I",
+            })
+        })
+
+        it("should return empty list if no items", async () => {
+            mockExecute.mockResolvedValueOnce([[]])
+
+            const req = { requestId: "test", body: {} }
+
+            await getItemsList(req, mockRes)
+
+            const response = mockRes.json.mock.calls[0][0]
+            expect(response.type).toBe("ilsa")
+            expect(response.its).toEqual([])
+        })
+
+        it("should return empty list on database error", async () => {
+            mockExecute.mockRejectedValueOnce(new Error("DB error"))
+
+            const req = { requestId: "test", body: {} }
+
+            await getItemsList(req, mockRes)
+
+            const response = mockRes.json.mock.calls[0][0]
+            expect(response.type).toBe("ilsa")
+            expect(response.its).toEqual([])
+        })
+
+        it("should handle missing optional fields with defaults", async () => {
+            mockExecute.mockResolvedValueOnce([
+                [
+                    {
+                        weapon_index: 2,
+                        price: 40,
+                        min_qty: 1,
+                        max_qty: 99,
+                        unlock_price: null,
+                        purchase_type: null,
+                    },
+                ],
+            ])
+
+            const req = { requestId: "test", body: {} }
+
+            await getItemsList(req, mockRes)
+
+            const response = mockRes.json.mock.calls[0][0]
+            expect(response.its[0]).toEqual({
+                type: "sku",
+                nm: "2",
+                pr: 40,
+                mi: 1,
+                ma: 99,
+                up: 0,
+                im: "I",
             })
         })
     })

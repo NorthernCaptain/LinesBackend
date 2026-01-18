@@ -27,6 +27,16 @@ function getOpponentSessionId(sessionId) {
 }
 
 /**
+ * Gets the base session ID by stripping the player bit.
+ *
+ * @param {BigInt} sessionId - Full session ID
+ * @returns {BigInt} Base session ID (even)
+ */
+function toBaseSessionId(sessionId) {
+    return sessionId & ~1n
+}
+
+/**
  * Fetches the next message for a receiver from the database.
  * Messages are stored by sender_session_id, so we look for opponent's messages.
  *
@@ -278,6 +288,13 @@ async function poll(req, res) {
     logger.debug({ ...ctx, after: afterMsgId }, "Poll request received")
 
     try {
+        // Keep session alive - update updated_at so matchmaking can find waiting sessions
+        await pool.execute(
+            `UPDATE game_sessions SET updated_at = NOW(3)
+             WHERE id = ? AND status = 0`,
+            [toBaseSessionId(sessionId).toString()]
+        )
+
         // Acknowledge previously received messages
         if (afterMsgId > 0n) {
             await deleteAcknowledgedMessages(sessionId, afterMsgId)

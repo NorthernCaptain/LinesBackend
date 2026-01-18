@@ -485,7 +485,7 @@ async function terminateUserSessions(conn, userId) {
             status = ?,
             finished_at = NOW(3)
          WHERE (user_one_id = ? OR user_two_id = ?)
-           AND status < 1`,
+           AND status <= 1`,
         [SESSION_STATUS_TERMINATED_DUPLICATE, userId, userId]
     )
 

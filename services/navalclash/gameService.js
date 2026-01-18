@@ -14,6 +14,392 @@ const {
 const { sendMessage } = require("./messageService")
 const { logger } = require("../../utils/logger")
 
+// Bonus type indices (from GameBonus.java)
+const BONUS_TYPE = {
+    WIN_BONUS: 0,
+    LOST_BONUS: 1,
+    SURRENDER_WIN_BONUS: 2,
+    SURRENDER_LOST_BONUS: 3,
+    INTERRUPT_WIN_BONUS: 4,
+    INTERRUPT_LOST_BONUS: 5,
+    // Index 6 is unused
+    LOST_BONUS_WITH_WEAPONS: 7,
+}
+
+// Base coins for normal win
+const BASE_WIN_COINS = 9
+// Max rank difference bonus/penalty
+const MAX_RANK_DELTA = 5
+
+// Version threshold for paid vs free version
+const PAID_VERSION_MIN = 2000
+
+// Rank thresholds (stars required for each rank - from UserBaseData.java)
+// Paid version has 9 ranks (0-8)
+const RANK_THRESHOLDS_PAID = [
+    { rank: 8, stars: 50000 }, // RANK_HONORED_FLEET_ADMIRAL
+    { rank: 7, stars: 3000 },  // RANK_FLEET_ADMIRAL
+    { rank: 6, stars: 1000 },  // RANK_ADMIRAL
+    { rank: 5, stars: 500 },   // RANK_REAR_ADMIRAL
+    { rank: 4, stars: 200 },   // RANK_CAPTAIN
+    { rank: 3, stars: 100 },   // RANK_COMMANDER
+    { rank: 2, stars: 50 },    // RANK_LIEUTENANT_COMMANDER
+    { rank: 1, stars: 10 },    // RANK_LIEUTENANT
+    { rank: 0, stars: 0 },     // RANK_ENSIGN (default)
+]
+
+// Free version has 4 ranks (0-3)
+const RANK_THRESHOLDS_FREE = [
+    { rank: 3, stars: 250 },   // RANK_WARRANT
+    { rank: 2, stars: 70 },    // RANK_MASTER_CHIEF
+    { rank: 1, stars: 10 },    // RANK_PETTY_OFFICER
+    { rank: 0, stars: 0 },     // RANK_SEAMAN (default)
+]
+
+// Legacy export name for backwards compatibility
+const RANK_THRESHOLDS = RANK_THRESHOLDS_PAID
+
+/**
+ * Calculates rank based on total stars and app version.
+ * - Paid version (v >= 2000): 9 ranks (0-8)
+ * - Free version (v < 2000): 4 ranks (0-3)
+ *
+ * @param {number} stars - Total stars
+ * @param {number} version - App version (default: paid version)
+ * @returns {number} Rank
+ */
+function calculateRank(stars, version = PAID_VERSION_MIN) {
+    const thresholds = version >= PAID_VERSION_MIN
+        ? RANK_THRESHOLDS_PAID
+        : RANK_THRESHOLDS_FREE
+
+    for (const threshold of thresholds) {
+        if (stars >= threshold.stars) {
+            return threshold.rank
+        }
+    }
+    return 0
+}
+
+/**
+ * Clamps a value to a range.
+ *
+ * @param {number} value - Value to clamp
+ * @param {number} min - Minimum value
+ * @param {number} max - Maximum value
+ * @returns {number} Clamped value
+ */
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value))
+}
+
+// Obfuscation constants (from UserBaseData.java)
+const XOR_VAL1 = 0x1824ead3
+const XOR_VAL2 = 0x5c83cb3d
+const SHIFT_VAL = 5
+
+/**
+ * Encodes a value using the client's obfuscation algorithm.
+ * Used for: st (stars), rk (rank), won, pld, an (coins), ls, ga[], wa[], we[], wu[]
+ *
+ * @param {number} origval - Original value to encode
+ * @returns {number} Encoded value
+ */
+function val2mess(origval) {
+    let val = origval < 0 ? -origval : origval
+    val ^= XOR_VAL1
+    val = (val << SHIFT_VAL) >>> 0 // unsigned shift
+    val ^= XOR_VAL2
+    val = Math.floor(val / 3)
+    val = (val << 1) >>> 0
+    val |= origval < 0 ? 1 : 0
+    return val
+}
+
+/**
+ * Calculates coin bonus for normal win based on rank difference.
+ * Formula: 9 + clamp(opponent_rank - winner_rank, -5, +5)
+ *
+ * @param {number} winnerRank - Winner's rank
+ * @param {number} opponentRank - Opponent's rank
+ * @returns {number} Coins earned (always positive, 4-14)
+ */
+function calculateWinBonus(winnerRank, opponentRank) {
+    const rankDelta = clamp(opponentRank - winnerRank, -MAX_RANK_DELTA, MAX_RANK_DELTA)
+    return BASE_WIN_COINS + rankDelta
+}
+
+/**
+ * Calculates coin change based on game outcome type.
+ *
+ * @param {number} bonusType - One of BONUS_TYPE values
+ * @param {number} winnerRank - Winner's rank (for WIN_BONUS calculation)
+ * @param {number} loserRank - Loser's rank (for WIN_BONUS calculation)
+ * @returns {number} Coins to add (positive) or subtract (negative)
+ */
+function calculateBonusCoins(bonusType, winnerRank = 0, loserRank = 0) {
+    switch (bonusType) {
+        case BONUS_TYPE.WIN_BONUS:
+            return calculateWinBonus(winnerRank, loserRank)
+        case BONUS_TYPE.LOST_BONUS:
+            return -1
+        case BONUS_TYPE.SURRENDER_WIN_BONUS:
+            // Half of normal win bonus, minimum 1
+            return Math.max(Math.floor(calculateWinBonus(winnerRank, loserRank) / 2), 1)
+        case BONUS_TYPE.SURRENDER_LOST_BONUS:
+            return -2
+        case BONUS_TYPE.INTERRUPT_WIN_BONUS:
+            return 1
+        case BONUS_TYPE.INTERRUPT_LOST_BONUS:
+            return 0
+        case BONUS_TYPE.LOST_BONUS_WITH_WEAPONS:
+            return 2
+        default:
+            return 0
+    }
+}
+
+/**
+ * Updates user's coin balance in the database.
+ * Ensures coins never go below 0.
+ *
+ * @param {Object} conn - Database connection
+ * @param {number} userId - User ID
+ * @param {number} coinsDelta - Coins to add (can be negative)
+ * @param {Object} ctx - Logging context
+ * @returns {Promise<number>} New coin balance
+ */
+async function updateUserCoins(conn, userId, coinsDelta, ctx) {
+    if (!userId || coinsDelta === 0) {
+        return 0
+    }
+
+    // Use GREATEST to ensure coins never go below 0
+    await conn.execute(
+        `UPDATE users SET coins = GREATEST(0, CAST(coins AS SIGNED) + ?) WHERE id = ?`,
+        [coinsDelta, userId]
+    )
+
+    // Fetch new balance
+    const [rows] = await conn.execute("SELECT coins FROM users WHERE id = ?", [userId])
+    const newBalance = rows.length > 0 ? rows[0].coins : 0
+
+    logger.info(
+        { ...ctx, userId, coinsDelta, newBalance },
+        `Updated user coins: ${coinsDelta > 0 ? "+" : ""}${coinsDelta} = ${newBalance}`
+    )
+
+    return newBalance
+}
+
+/**
+ * Gets user ranks for coin calculation.
+ *
+ * @param {Object} conn - Database connection
+ * @param {number} winnerId - Winner user ID
+ * @param {number} loserId - Loser user ID
+ * @returns {Promise<Object>} Object with winnerRank and loserRank
+ */
+async function getUserRanks(conn, winnerId, loserId) {
+    const [rows] = await conn.execute(
+        "SELECT id, `rank` FROM users WHERE id IN (?, ?)",
+        [winnerId, loserId]
+    )
+
+    let winnerRank = 0
+    let loserRank = 0
+
+    for (const row of rows) {
+        if (row.id === winnerId) winnerRank = row.rank || 0
+        if (row.id === loserId) loserRank = row.rank || 0
+    }
+
+    return { winnerRank, loserRank }
+}
+
+/**
+ * Builds the bonus object (bns) containing coin and star bonuses for all outcome types.
+ * This is injected into fldinfo when forwarding to opponent.
+ *
+ * @param {number} myRank - This player's rank
+ * @param {number} opponentRank - Opponent's rank
+ * @returns {Object} Bonus object with type, gbc (coins), gbs (stars)
+ */
+function buildBonusObject(myRank, opponentRank) {
+    // Calculate all bonus coins for each outcome type
+    // Index mapping: 0=WIN, 1=LOST, 2=SURR_WIN, 3=SURR_LOST, 4=INT_WIN, 5=INT_LOST, 6=unused, 7=LOST_WEAPONS
+    // All values must be encoded with val2mess() before sending
+    const gbc = [
+        val2mess(calculateBonusCoins(BONUS_TYPE.WIN_BONUS, myRank, opponentRank)),
+        val2mess(calculateBonusCoins(BONUS_TYPE.LOST_BONUS)),
+        val2mess(calculateBonusCoins(BONUS_TYPE.SURRENDER_WIN_BONUS, myRank, opponentRank)),
+        val2mess(calculateBonusCoins(BONUS_TYPE.SURRENDER_LOST_BONUS)),
+        val2mess(calculateBonusCoins(BONUS_TYPE.INTERRUPT_WIN_BONUS)),
+        val2mess(calculateBonusCoins(BONUS_TYPE.INTERRUPT_LOST_BONUS)),
+        val2mess(0), // unused
+        val2mess(calculateBonusCoins(BONUS_TYPE.LOST_BONUS_WITH_WEAPONS)),
+    ]
+
+    // Stars bonuses - win gets opponent rank + 1, losers always get 0 (never negative)
+    // All values must be encoded with val2mess() before sending
+    const gbs = [
+        val2mess(Math.max(0, opponentRank + 1)), // WIN_BONUS - stars based on opponent rank
+        val2mess(0), // LOST_BONUS - no stars for losing
+        val2mess(1), // SURRENDER_WIN_BONUS - minimal stars for surrender win
+        val2mess(0), // SURRENDER_LOST_BONUS - no stars for surrendering
+        val2mess(1), // INTERRUPT_WIN_BONUS - minimal stars for interrupt win
+        val2mess(0), // INTERRUPT_LOST_BONUS - no stars for disconnect
+        val2mess(0), // unused
+        val2mess(0), // LOST_BONUS_WITH_WEAPONS - no stars even with weapons
+    ]
+
+    return {
+        type: "bns",
+        gbc,
+        gbs,
+    }
+}
+
+/**
+ * Gets both players' info from a session for bonus calculation.
+ *
+ * @param {BigInt} baseSessionId - Base session ID
+ * @param {number} senderPlayer - Player number of sender (0 or 1)
+ * @returns {Promise<Object|null>} Object with senderRank, receiverRank, or null if not found
+ */
+async function getSessionPlayersInfo(baseSessionId, senderPlayer) {
+    const conn = await pool.getConnection()
+    try {
+        const [sessions] = await conn.execute(
+            `SELECT gs.user_one_id, gs.user_two_id,
+                    u1.rank AS rank_one, u2.rank AS rank_two
+             FROM game_sessions gs
+             LEFT JOIN users u1 ON u1.id = gs.user_one_id
+             LEFT JOIN users u2 ON u2.id = gs.user_two_id
+             WHERE gs.id = ?`,
+            [baseSessionId.toString()]
+        )
+
+        if (sessions.length === 0) {
+            return null
+        }
+
+        const session = sessions[0]
+        const senderRank = senderPlayer === 0 ? (session.rank_one || 0) : (session.rank_two || 0)
+        const receiverRank = senderPlayer === 0 ? (session.rank_two || 0) : (session.rank_one || 0)
+
+        return { senderRank, receiverRank }
+    } finally {
+        conn.release()
+    }
+}
+
+/**
+ * Builds the mdf (modify data) message with updated user info.
+ *
+ * @param {Object} conn - Database connection
+ * @param {number} userId - User ID
+ * @param {number} version - Client app version (for rank calculation)
+ * @param {Object} ctx - Logging context
+ * @returns {Promise<Object|null>} mdf message object or null if user not found
+ */
+async function buildMdfMessage(conn, userId, version, ctx) {
+    if (!userId) return null
+
+    try {
+        const [rows] = await conn.execute(
+            `SELECT id, name, uuid, \`rank\`, stars, games, gameswon, coins,
+                    games_android, games_bluetooth, games_web, games_passplay,
+                    wins_android, wins_bluetooth, wins_web, wins_passplay
+             FROM users WHERE id = ?`,
+            [userId]
+        )
+
+        if (rows.length === 0) {
+            return null
+        }
+
+        const user = rows[0]
+
+        // Calculate rank from stars using version-appropriate thresholds
+        // Free version (v < 2000): 4 ranks
+        // Paid version (v >= 2000): 9 ranks
+        const stars = user.stars || 0
+        const currentRank = user.rank || 0
+        const newRank = calculateRank(stars, version)
+
+        if (newRank !== currentRank) {
+            await conn.execute(
+                "UPDATE users SET `rank` = ? WHERE id = ?",
+                [newRank, userId]
+            )
+            logger.info(
+                { ...ctx, userId, stars, version, oldRank: currentRank, newRank },
+                `Rank updated: ${currentRank} -> ${newRank}`
+            )
+        }
+
+        // Build user object matching PlayerInfo serialization format
+        // Field names match Java User.serializeJSON()
+        // IMPORTANT: dev and ut are required fields - client throws exception without them
+        // IMPORTANT: Only 'an' (coins) needs val2mess() encoding - other fields use
+        // setter methods (setRank, setStars, etc.) that encode internally
+        const userObj = {
+            nam: user.name,
+            dev: "", // device name - not stored per-user, empty is fine
+            id: user.uuid,
+            ut: 2, // user type: 1=UTYPE_ANDROID, 2=UTYPE_USER
+            rk: newRank, // plain - client's setRank() encodes (use calculated rank)
+            st: stars, // plain - client's setStars() encodes
+            pld: user.games || 0, // plain - client's setGamesPlayed() encodes
+            won: user.gameswon || 0, // plain - client's setGamesWon() encodes
+            an: val2mess(user.coins || 0), // ONLY coins need encoding (direct assignment)
+            ga: [
+                user.games_android || 0,
+                user.games_bluetooth || 0,
+                user.games_web || 0,
+                user.games_passplay || 0,
+            ],
+            wa: [
+                user.wins_android || 0,
+                user.wins_bluetooth || 0,
+                user.wins_web || 0,
+                user.wins_passplay || 0,
+            ],
+        }
+
+        return {
+            type: "mdf",
+            u: userObj,
+        }
+    } catch (error) {
+        logger.error(ctx, "buildMdfMessage error:", error.message)
+        return null
+    }
+}
+
+/**
+ * Builds the done message sent after game ends.
+ *
+ * @param {Object} conn - Database connection
+ * @param {number} userId - User ID
+ * @param {number} totalCoins - User's total coins after update
+ * @param {Object} opponentWeapons - Weapons used by opponent (optional)
+ * @param {number} version - Client app version (for rank calculation)
+ * @param {Object} ctx - Logging context
+ * @returns {Promise<Object>} done message object
+ */
+async function buildDoneMessage(conn, userId, totalCoins, opponentWeapons, version, ctx) {
+    const mdf = await buildMdfMessage(conn, userId, version, ctx)
+
+    return {
+        type: "done",
+        cc: totalCoins,
+        weap: opponentWeapons || [],
+        mdf: mdf,
+    }
+}
+
 /**
  * Validates session ID from request.
  * Returns full session ID and derived player/baseSessionId for DB operations.
@@ -208,12 +594,34 @@ async function fieldInfo(req, res) {
         })
     }
 
-    // Forward all fields the client sent
+    // Get both players' ranks to calculate bonus values
+    const playersInfo = await getSessionPlayersInfo(
+        session.baseSessionId,
+        session.player
+    )
+
+    // Build bns object for the receiver (opponent)
+    // The receiver's perspective: they would win against sender, so use receiver's rank as "my rank"
+    let injectedBns = bns
+    if (playersInfo) {
+        injectedBns = buildBonusObject(playersInfo.receiverRank, playersInfo.senderRank)
+        logger.debug(
+            {
+                ...ctx,
+                senderRank: playersInfo.senderRank,
+                receiverRank: playersInfo.receiverRank,
+                gbc: injectedBns.gbc,
+            },
+            "Injecting bns into fldinfo"
+        )
+    }
+
+    // Forward all fields with injected bns
     return sendAndRespond(
         res,
         session.sessionId,
         "fldinfo",
-        { json, player, device, uuuid, lastshot, u, whosturn, myfld, mysc, bns, rating },
+        { json, player, device, uuuid, lastshot, u, whosturn, myfld, mysc, bns: injectedBns, rating },
         ctx
     )
 }
@@ -404,6 +812,12 @@ async function handlePlayerLeft(req, res, session, msg, u, ctx) {
             [SESSION_STATUS.FINISHED_SURRENDERED, winnerId, session.baseSessionId.toString()]
         )
 
+        // Determine loser (the player who left)
+        const loserId =
+            session.player === 0
+                ? gameSession.user_one_id
+                : gameSession.user_two_id
+
         // Update winner stats
         if (winnerId) {
             await conn.execute(
@@ -419,10 +833,6 @@ async function handlePlayerLeft(req, res, session, msg, u, ctx) {
         }
 
         // Update loser stats
-        const loserId =
-            session.player === 0
-                ? gameSession.user_one_id
-                : gameSession.user_two_id
         if (loserId) {
             await conn.execute(
                 `UPDATE users SET
@@ -433,8 +843,37 @@ async function handlePlayerLeft(req, res, session, msg, u, ctx) {
             )
         }
 
-        // Forward the message to opponent so they know they won
+        // Calculate and apply surrender coins
+        const { winnerRank, loserRank } = await getUserRanks(conn, winnerId, loserId)
+
+        const winnerBonus = calculateBonusCoins(
+            BONUS_TYPE.SURRENDER_WIN_BONUS,
+            winnerRank,
+            loserRank
+        )
+        const loserBonus = calculateBonusCoins(BONUS_TYPE.SURRENDER_LOST_BONUS)
+
+        const winnerCoins = await updateUserCoins(conn, winnerId, winnerBonus, ctx)
+        const loserCoins = await updateUserCoins(conn, loserId, loserBonus, ctx)
+
+        logger.info(
+            {
+                ...ctx,
+                winnerId,
+                loserId,
+                winnerBonus,
+                loserBonus,
+                winnerCoins,
+                loserCoins,
+            },
+            `Surrender: winner +${winnerBonus}, loser ${loserBonus}`
+        )
+
+        // Forward the info message to opponent so they know the player left
+        // The opponent will receive their done when they send their own /fin
         await sendMessage(session.sessionId, "info", { msg, u })
+
+        logger.debug(ctx, "Surrender info forwarded to opponent")
 
         return res.json({ type: "ok" })
     } catch (error) {
@@ -550,6 +989,9 @@ async function finish(req, res) {
 
     const conn = await pool.getConnection()
     try {
+        // Use READ COMMITTED so we see the latest status after acquiring the lock
+        // With REPEATABLE READ, we might see a stale snapshot even after FOR UPDATE
+        await conn.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
         await conn.beginTransaction()
 
         const [sessions] = await conn.execute(
@@ -569,8 +1011,16 @@ async function finish(req, res) {
 
         const gameSession = sessions[0]
 
+        logger.debug(
+            { ...ctx, currentStatus: gameSession.status },
+            `Finish: current session status is ${gameSession.status}`
+        )
+
         // Only update if game is still in progress (status 0 or 1)
-        // Don't overwrite surrender (4), timeout (5,6), or other finish states
+        // Don't overwrite surrender (4), timeout (5,6), or other finish states (>= 10)
+        let winnerCoins = 0
+        let loserCoins = 0
+
         if (gameSession.status <= 1) {
             const { winnerId, loserId } = determineWinnerLoser(
                 gameSession,
@@ -590,28 +1040,105 @@ async function finish(req, res) {
             await updateWinnerStats(conn, winnerId)
             await updateLoserStats(conn, loserId)
 
-            logger.info(
-                { ...ctx, winnerId, loserId },
-                `Game finished, winner: ${winnerId}`
+            // Calculate and apply coins based on ranks
+            const { winnerRank, loserRank } = await getUserRanks(conn, winnerId, loserId)
+
+            const winnerBonus = calculateBonusCoins(
+                BONUS_TYPE.WIN_BONUS,
+                winnerRank,
+                loserRank
             )
+            const loserBonus = calculateBonusCoins(BONUS_TYPE.LOST_BONUS)
+
+            winnerCoins = await updateUserCoins(conn, winnerId, winnerBonus, ctx)
+            loserCoins = await updateUserCoins(conn, loserId, loserBonus, ctx)
+
+            logger.info(
+                {
+                    ...ctx,
+                    winnerId,
+                    loserId,
+                    winnerRank,
+                    loserRank,
+                    winnerBonus,
+                    loserBonus,
+                    winnerCoins,
+                    loserCoins,
+                },
+                `Game finished, winner: ${winnerId}, coins: +${winnerBonus}/-${Math.abs(loserBonus)}`
+            )
+
+            // Build done message for the player who sent this fin request
+            // done is returned directly in the HTTP response, not enqueued
+            const requestingUserId = session.player === 0
+                ? gameSession.user_one_id
+                : gameSession.user_two_id
+            const requestingUserCoins = won ? winnerCoins : loserCoins
+            const requestingUserVersion = session.player === 0
+                ? gameSession.version_one
+                : gameSession.version_two
+            const requestingUserDone = await buildDoneMessage(
+                conn,
+                requestingUserId,
+                requestingUserCoins,
+                wpl, // opponent's weapons
+                requestingUserVersion,
+                ctx
+            )
+
+            await conn.commit()
+
+            // Finalize training data after transaction commit
+            if (gameSession.status <= 1) {
+                dbFinalizeTrainingGame(session.baseSessionId, ctx).catch((err) => {
+                    logger.error(ctx, "dbFinalizeTrainingGame failed:", err.message)
+                })
+            }
+
+            // Forward the original fin message to opponent (they poll via /receive)
+            await sendMessage(session.sessionId, "fin", { won, u, sc, wpl, ni, gsi, sur })
+
+            logger.debug(ctx, "Returning done directly to fin sender")
+
+            // Return done directly in HTTP response (not enqueued)
+            return res.json(requestingUserDone)
         } else {
-            logger.debug(ctx, "Game already finished, skipping stats update")
+            // Game already finished by first fin - still build done for this player
+            logger.debug(ctx, "Game already finished, building done for second player")
+
+            const requestingUserId = session.player === 0
+                ? gameSession.user_one_id
+                : gameSession.user_two_id
+            const requestingUserVersion = session.player === 0
+                ? gameSession.version_one
+                : gameSession.version_two
+
+            // Fetch current coin balance for this user
+            const [userRows] = await conn.execute(
+                "SELECT coins FROM users WHERE id = ?",
+                [requestingUserId]
+            )
+            const currentCoins = userRows.length > 0 ? userRows[0].coins : 0
+
+            const requestingUserDone = await buildDoneMessage(
+                conn,
+                requestingUserId,
+                currentCoins,
+                wpl,
+                requestingUserVersion,
+                ctx
+            )
+
+            await conn.commit()
+
+            // Still forward the fin message even if already finished
+            await sendMessage(session.sessionId, "fin", { won, u, sc, wpl, ni, gsi, sur })
+
+            logger.debug(ctx, "Returning done directly to second fin sender")
+
+            // Return done directly in HTTP response
+            return res.json(requestingUserDone)
         }
-
-        await conn.commit()
-
-        // Finalize training data after transaction commit
-        // This prevents lock conflicts when both players call finish() simultaneously
-        // If this fails, the training data can still be reconstructed at export time
-        if (gameSession.status <= 1) {
-            dbFinalizeTrainingGame(session.baseSessionId, ctx).catch((err) => {
-                logger.error(ctx, "dbFinalizeTrainingGame failed:", err.message)
-            })
-        }
-
-        await sendMessage(session.sessionId, "fin", { won, u, sc, wpl, ni, gsi, sur })
-
-        return res.json({ type: "ok" })
     } catch (error) {
         await conn.rollback()
         logger.error(ctx, "finish error:", error.message)
@@ -676,4 +1203,18 @@ module.exports = {
     validateSession,
     storeFieldData,
     determineWinnerLoser,
+    // Coin calculation functions
+    BONUS_TYPE,
+    calculateWinBonus,
+    calculateBonusCoins,
+    clamp,
+    buildBonusObject,
+    // Rank calculation
+    PAID_VERSION_MIN,
+    RANK_THRESHOLDS,
+    RANK_THRESHOLDS_PAID,
+    RANK_THRESHOLDS_FREE,
+    calculateRank,
+    // Obfuscation
+    val2mess,
 }

@@ -186,7 +186,8 @@ describe("services/navalclash/connectService", () => {
             }
 
             mockConnection.execute
-                .mockResolvedValueOnce([[{ id: 1, isbanned: 1 }]]) // getOrCreateUser
+                .mockResolvedValueOnce([]) // SET TRANSACTION ISOLATION LEVEL
+                .mockResolvedValueOnce([[{ id: 1, isbanned: 1 }]]) // find user
                 .mockResolvedValueOnce([{ affectedRows: 1 }]) // update login
 
             await connect(req, mockRes)
@@ -204,6 +205,7 @@ describe("services/navalclash/connectService", () => {
             }
 
             mockConnection.execute
+                .mockResolvedValueOnce([]) // SET TRANSACTION ISOLATION LEVEL
                 .mockResolvedValueOnce([[{ id: 1, isbanned: 0 }]]) // find user
                 .mockResolvedValueOnce([{ affectedRows: 1 }]) // update login
                 .mockResolvedValueOnce([
@@ -242,6 +244,7 @@ describe("services/navalclash/connectService", () => {
             }
 
             mockConnection.execute
+                .mockResolvedValueOnce([]) // SET TRANSACTION ISOLATION LEVEL
                 .mockResolvedValueOnce([[]]) // find user - not found
                 .mockResolvedValueOnce([{ insertId: 5 }]) // insert user
                 .mockResolvedValueOnce([[]]) // check PIN
@@ -251,7 +254,6 @@ describe("services/navalclash/connectService", () => {
                     [{ name: "maintenance_mode", int_value: 0 }],
                 ]) // config
                 .mockResolvedValueOnce([{ affectedRows: 0 }]) // terminate old sessions
-                .mockResolvedValueOnce([{ affectedRows: 1 }]) // matchmaking lock INSERT
                 .mockResolvedValueOnce([[{ game_variant: 1 }]]) // matchmaking lock SELECT FOR UPDATE
                 .mockResolvedValueOnce([[]]) // find waiting session
 
@@ -302,13 +304,13 @@ describe("services/navalclash/connectService", () => {
             }
 
             mockConnection.execute
+                .mockResolvedValueOnce([]) // SET TRANSACTION ISOLATION LEVEL
                 .mockResolvedValueOnce([[mockUser]]) // find user
                 .mockResolvedValueOnce([{ affectedRows: 1 }]) // update login
                 .mockResolvedValueOnce([
                     [{ name: "maintenance_mode", int_value: 0 }],
                 ]) // config
                 .mockResolvedValueOnce([{ affectedRows: 0 }]) // terminate old sessions
-                .mockResolvedValueOnce([{ affectedRows: 1 }]) // matchmaking lock INSERT
                 .mockResolvedValueOnce([[{ game_variant: 1 }]]) // matchmaking lock SELECT FOR UPDATE
                 .mockResolvedValueOnce([[waitingSession]]) // find waiting session
 
@@ -370,6 +372,7 @@ describe("services/navalclash/connectService", () => {
             }
 
             mockConnection.execute
+                .mockResolvedValueOnce([]) // SET TRANSACTION ISOLATION LEVEL
                 .mockResolvedValueOnce([[mockUser]]) // find user
                 .mockResolvedValueOnce([{ affectedRows: 1 }]) // update login
                 .mockResolvedValueOnce([[]]) // find device - not found
@@ -380,7 +383,6 @@ describe("services/navalclash/connectService", () => {
                     [{ name: "maintenance_mode", int_value: 0 }],
                 ]) // config
                 .mockResolvedValueOnce([{ affectedRows: 0 }]) // terminate old sessions
-                .mockResolvedValueOnce([{ affectedRows: 1 }]) // matchmaking lock INSERT
                 .mockResolvedValueOnce([[{ game_variant: 1 }]]) // matchmaking lock SELECT FOR UPDATE
                 .mockResolvedValueOnce([[]]) // find waiting session
 

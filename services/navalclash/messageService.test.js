@@ -160,7 +160,9 @@ describe("services/navalclash/messageService", () => {
                 msg_type: "greeting",
                 body: JSON.stringify({ u: { name: "Test" } }),
             }
-            mockExecute.mockResolvedValueOnce([[mockMessage]])
+            mockExecute
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE game_sessions
+                .mockResolvedValueOnce([[mockMessage]]) // fetch message
 
             const req = { body: { sid: "1001" } }
 
@@ -175,6 +177,7 @@ describe("services/navalclash/messageService", () => {
 
         it("should delete acknowledged messages if after is provided", async () => {
             mockExecute
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE game_sessions
                 .mockResolvedValueOnce([{ affectedRows: 2 }]) // delete
                 .mockResolvedValueOnce([
                     [{ msg_id: 10, msg_type: "ok", body: "{}" }],

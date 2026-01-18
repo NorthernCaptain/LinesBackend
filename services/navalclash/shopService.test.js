@@ -5,24 +5,49 @@
  */
 
 const mockExecute = jest.fn()
+const mockConnection = {
+    execute: jest.fn(),
+    beginTransaction: jest.fn(),
+    commit: jest.fn(),
+    rollback: jest.fn(),
+    release: jest.fn(),
+}
 
 jest.mock("../../db/navalclash", () => ({
     pool: {
         execute: mockExecute,
+        getConnection: jest.fn(),
     },
 }))
+
+// Mock gameService for val2mess
+jest.mock("./gameService", () => ({
+    val2mess: jest.fn((v) => v * 1000 + 999), // Simple mock encoding
+}))
+
+const { pool } = require("../../db/navalclash")
+const { val2mess } = require("./gameService")
 
 const {
     getItemsList,
     getInventory,
     addCoins,
     getCoins,
+    internalBuy,
     serializeInventoryItem,
+    buildUserResponse,
+    BUY_ERROR,
 } = require("./shopService")
 
 describe("services/navalclash/shopService", () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        pool.getConnection.mockResolvedValue(mockConnection)
+        mockConnection.execute.mockReset()
+        mockConnection.beginTransaction.mockReset()
+        mockConnection.commit.mockReset()
+        mockConnection.rollback.mockReset()
+        mockConnection.release.mockReset()
     })
 
     describe("serializeInventoryItem", () => {
@@ -273,6 +298,264 @@ describe("services/navalclash/shopService", () => {
             const result = await getCoins(1)
 
             expect(result).toBe(0)
+        })
+    })
+
+    describe("buildUserResponse", () => {
+        it("should build user response with encoded coins", () => {
+            const user = {
+                name: "TestPlayer",
+                uuid: "test-uuid",
+                rank: 3,
+                stars: 100,
+                games: 50,
+                gameswon: 25,
+                coins: 500,
+            }
+            const weapons = [5, 3, 2, 0, 1, 0]
+
+            const result = buildUserResponse(user, weapons)
+
+            expect(result.nam).toBe("TestPlayer")
+            expect(result.id).toBe("test-uuid")
+            expect(result.rk).toBe(3)
+            expect(result.st).toBe(100)
+            expect(result.pld).toBe(50)
+            expect(result.won).toBe(25)
+            expect(result.we).toEqual([5, 3, 2, 0, 1, 0])
+            // Coins should be encoded via val2mess
+            expect(val2mess).toHaveBeenCalledWith(500)
+            expect(result.an).toBe(500999) // mock encoding: v * 1000 + 999
+        })
+    })
+
+    describe("internalBuy", () => {
+        const mockRes = { json: jest.fn() }
+
+        beforeEach(() => {
+            mockRes.json.mockClear()
+        })
+
+        it("should return error if missing user", async () => {
+            const req = { requestId: "test", body: { its: [{ sku: "0", q: 1, p: 50 }] } }
+
+            await internalBuy(req, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "ibya",
+                rc: BUY_ERROR.DENIED,
+                msg: { text: "Missing user" },
+            })
+        })
+
+        it("should return error if missing items", async () => {
+            const req = { requestId: "test", body: { u: { id: "test-uuid" } } }
+
+            await internalBuy(req, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "ibya",
+                rc: BUY_ERROR.DENIED,
+                msg: { text: "Missing items" },
+            })
+        })
+
+        it("should return error if user not found", async () => {
+            mockConnection.execute.mockResolvedValueOnce([[]]) // No user found
+
+            const req = {
+                requestId: "test",
+                body: {
+                    u: { id: "unknown-uuid", nam: "Player" },
+                    its: [{ sku: "0", q: 1, p: 50 }],
+                },
+            }
+
+            await internalBuy(req, mockRes)
+
+            expect(mockConnection.rollback).toHaveBeenCalled()
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "ibya",
+                rc: BUY_ERROR.DENIED,
+                msg: { text: "User not found" },
+            })
+        })
+
+        it("should return error if price mismatch", async () => {
+            const mockUser = { id: 1, name: "Player", uuid: "test-uuid", coins: 500 }
+
+            mockConnection.execute
+                .mockResolvedValueOnce([[mockUser]]) // User found
+                .mockResolvedValueOnce([[{ weapon_index: 0, price: 50 }]]) // Shop items
+
+            const req = {
+                requestId: "test",
+                body: {
+                    u: { id: "test-uuid", nam: "Player" },
+                    its: [{ sku: "0", q: 1, p: 100 }], // Wrong price (100 vs 50)
+                },
+            }
+
+            await internalBuy(req, mockRes)
+
+            expect(mockConnection.rollback).toHaveBeenCalled()
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "ibya",
+                rc: BUY_ERROR.WRONG_PRICE,
+                msg: { text: "Price mismatch" },
+            })
+        })
+
+        it("should return error if insufficient coins", async () => {
+            const mockUser = { id: 1, name: "Player", uuid: "test-uuid", coins: 100 }
+
+            mockConnection.execute
+                .mockResolvedValueOnce([[mockUser]]) // User found
+                .mockResolvedValueOnce([[{ weapon_index: 0, price: 50 }]]) // Shop items
+
+            const req = {
+                requestId: "test",
+                body: {
+                    u: { id: "test-uuid", nam: "Player" },
+                    its: [{ sku: "0", q: 5, p: 50 }], // Total cost: 250, user has 100
+                },
+            }
+
+            await internalBuy(req, mockRes)
+
+            expect(mockConnection.rollback).toHaveBeenCalled()
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "ibya",
+                rc: BUY_ERROR.WRONG_PRICE,
+                msg: { text: "Insufficient coins" },
+            })
+        })
+
+        it("should successfully purchase weapons", async () => {
+            const mockUser = {
+                id: 1,
+                name: "Player",
+                uuid: "test-uuid",
+                rank: 2,
+                stars: 50,
+                games: 20,
+                gameswon: 10,
+                coins: 500,
+            }
+
+            mockConnection.execute
+                .mockResolvedValueOnce([[mockUser]]) // User found
+                .mockResolvedValueOnce([[{ weapon_index: 0, price: 50 }, { weapon_index: 1, price: 75 }]]) // Shop items
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // Update coins
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // Insert inventory
+                .mockResolvedValueOnce([[{ item_id: "0", quantity: 3 }]]) // Get inventory
+
+            const req = {
+                requestId: "test",
+                body: {
+                    u: { id: "test-uuid", nam: "Player" },
+                    its: [{ sku: "0", q: 3, p: 50 }], // Buy 3 mines at 50 = 150
+                },
+            }
+
+            await internalBuy(req, mockRes)
+
+            expect(mockConnection.commit).toHaveBeenCalled()
+            expect(mockConnection.release).toHaveBeenCalled()
+
+            const response = mockRes.json.mock.calls[0][0]
+            expect(response.type).toBe("ibya")
+            expect(response.rc).toBe(BUY_ERROR.SUCCESS)
+            expect(response.u).toBeDefined()
+            expect(response.u.nam).toBe("Player")
+            expect(response.u.we).toEqual([3, 0, 0, 0, 0, 0]) // 3 mines
+            // Coins should be encoded: 500 - 150 = 350
+            expect(val2mess).toHaveBeenCalledWith(350)
+        })
+
+        it("should handle selling weapons (negative quantity)", async () => {
+            const mockUser = {
+                id: 1,
+                name: "Player",
+                uuid: "test-uuid",
+                rank: 2,
+                stars: 50,
+                games: 20,
+                gameswon: 10,
+                coins: 100,
+            }
+
+            mockConnection.execute
+                .mockResolvedValueOnce([[mockUser]]) // User found
+                .mockResolvedValueOnce([[{ weapon_index: 0, price: 50 }]]) // Shop items
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // Update coins (refund)
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // Update inventory (subtract)
+                .mockResolvedValueOnce([[{ item_id: "0", quantity: 2 }]]) // Get inventory
+
+            const req = {
+                requestId: "test",
+                body: {
+                    u: { id: "test-uuid", nam: "Player" },
+                    its: [{ sku: "0", q: -2, p: 50 }], // Sell 2 mines at 50 = -100 cost (refund)
+                },
+            }
+
+            await internalBuy(req, mockRes)
+
+            expect(mockConnection.commit).toHaveBeenCalled()
+
+            const response = mockRes.json.mock.calls[0][0]
+            expect(response.type).toBe("ibya")
+            expect(response.rc).toBe(BUY_ERROR.SUCCESS)
+            // Coins: 100 - (-100) = 200
+            expect(val2mess).toHaveBeenCalledWith(200)
+        })
+
+        it("should return error for invalid SKU", async () => {
+            const mockUser = { id: 1, name: "Player", uuid: "test-uuid", coins: 500 }
+
+            mockConnection.execute
+                .mockResolvedValueOnce([[mockUser]]) // User found
+                .mockResolvedValueOnce([[{ weapon_index: 0, price: 50 }]]) // Shop items (only weapon 0)
+
+            const req = {
+                requestId: "test",
+                body: {
+                    u: { id: "test-uuid", nam: "Player" },
+                    its: [{ sku: "99", q: 1, p: 50 }], // Invalid SKU
+                },
+            }
+
+            await internalBuy(req, mockRes)
+
+            expect(mockConnection.rollback).toHaveBeenCalled()
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "ibya",
+                rc: BUY_ERROR.WRONG_PRICE,
+                msg: { text: "Invalid item" },
+            })
+        })
+
+        it("should handle database error gracefully", async () => {
+            mockConnection.execute.mockRejectedValueOnce(new Error("DB error"))
+
+            const req = {
+                requestId: "test",
+                body: {
+                    u: { id: "test-uuid", nam: "Player" },
+                    its: [{ sku: "0", q: 1, p: 50 }],
+                },
+            }
+
+            await internalBuy(req, mockRes)
+
+            expect(mockConnection.rollback).toHaveBeenCalled()
+            expect(mockConnection.release).toHaveBeenCalled()
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "ibya",
+                rc: BUY_ERROR.DENIED,
+                msg: { text: "Server error" },
+            })
         })
     })
 })

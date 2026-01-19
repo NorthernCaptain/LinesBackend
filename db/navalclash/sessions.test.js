@@ -85,11 +85,11 @@ describe("db/navalclash/sessions", () => {
     })
 
     describe("dbFindWaitingSession", () => {
-        it("should find waiting session", async () => {
+        it("should find waiting session for human joiner", async () => {
             const mockSession = { id: 1000n, user_one_id: 5, status: 0 }
             mockExecute.mockResolvedValue([[mockSession]])
 
-            const result = await dbFindWaitingSession(10, 1)
+            const result = await dbFindWaitingSession(10, 1, 100, null)
 
             expect(result).toEqual(mockSession)
             expect(mockExecute).toHaveBeenCalledWith(
@@ -101,7 +101,7 @@ describe("db/navalclash/sessions", () => {
         it("should return null when no waiting session", async () => {
             mockExecute.mockResolvedValue([[]])
 
-            const result = await dbFindWaitingSession(1, 1)
+            const result = await dbFindWaitingSession(1, 1, 100, null)
 
             expect(result).toBeNull()
         })
@@ -109,10 +109,37 @@ describe("db/navalclash/sessions", () => {
         it("should use provided connection", async () => {
             const mockConn = { execute: jest.fn().mockResolvedValue([[]]) }
 
-            await dbFindWaitingSession(1, 1, mockConn)
+            await dbFindWaitingSession(1, 1, 100, mockConn)
 
             expect(mockConn.execute).toHaveBeenCalled()
             expect(mockExecute).not.toHaveBeenCalled()
+        })
+
+        it("should filter out agent sessions when agent is joining", async () => {
+            const mockSession = { id: 1000n, user_one_id: 5, status: 0 }
+            mockExecute.mockResolvedValue([[mockSession]])
+
+            // Agent version (2150) joining
+            await dbFindWaitingSession(10, 1, 2150, null)
+
+            // Should include agent version filter in query
+            expect(mockExecute).toHaveBeenCalledWith(
+                expect.stringContaining("version_one < ?"),
+                [10, 1, 2100, 2200]
+            )
+        })
+
+        it("should not filter agent sessions when human is joining", async () => {
+            mockExecute.mockResolvedValue([[]])
+
+            // Human version (100) joining
+            await dbFindWaitingSession(10, 1, 100, null)
+
+            // Should NOT include agent version filter
+            expect(mockExecute).toHaveBeenCalledWith(
+                expect.not.stringContaining("version_one < ?"),
+                [10, 1]
+            )
         })
     })
 

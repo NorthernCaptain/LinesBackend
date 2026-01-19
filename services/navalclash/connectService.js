@@ -4,8 +4,22 @@
  * All rights reserved.
  */
 
-const { pool } = require("../../db/navalclash")
+const { pool, dbUpdateLocalStats } = require("../../db/navalclash")
 const { logger } = require("../../utils/logger")
+
+// AI agent version range (2100-2200)
+const AGENT_VERSION_MIN = 2100
+const AGENT_VERSION_MAX = 2200
+
+/**
+ * Checks if a version indicates an AI agent.
+ *
+ * @param {number} version - App version
+ * @returns {boolean} True if version is in the agent range
+ */
+function isAgentVersion(version) {
+    return version >= AGENT_VERSION_MIN && version <= AGENT_VERSION_MAX
+}
 
 /**
  * Snowflake-style Session ID Generator
@@ -411,20 +425,46 @@ async function findOrCreateSession(conn, user, body) {
         logger.debug(ctx, "Acquiring matchmaking lock")
         await acquireMatchmakingLock(conn, gameVariant)
 
-        logger.debug(ctx, "Searching for waiting session")
-        const [waitingSessions] = await conn.execute(
-            `SELECT gs.*, u.name as user_one_name
-             FROM game_sessions gs
-             JOIN users u ON u.id = gs.user_one_id
-             WHERE gs.status = 0
-               AND gs.user_two_id IS NULL
-               AND gs.user_one_id != ?
-               AND gs.game_variant = ?
-               AND gs.updated_at > DATE_SUB(NOW(3), INTERVAL 2 MINUTE)
-             ORDER BY gs.created_at ASC
-             LIMIT 1`,
-            [user.id, gameVariant]
+        // Check if joiner is an AI agent - agents can only play vs humans
+        const joinerIsAgent = isAgentVersion(version)
+        logger.debug(
+            { ...ctx, joinerIsAgent, version },
+            "Searching for waiting session"
         )
+
+        let waitingSessions
+        if (joinerIsAgent) {
+            // Agent joining - only match with humans (exclude agent versions)
+            ;[waitingSessions] = await conn.execute(
+                `SELECT gs.*, u.name as user_one_name
+                 FROM game_sessions gs
+                 JOIN users u ON u.id = gs.user_one_id
+                 WHERE gs.status = 0
+                   AND gs.user_two_id IS NULL
+                   AND gs.user_one_id != ?
+                   AND gs.game_variant = ?
+                   AND gs.updated_at > DATE_SUB(NOW(3), INTERVAL 2 MINUTE)
+                   AND (gs.version_one < ? OR gs.version_one > ?)
+                 ORDER BY gs.created_at ASC
+                 LIMIT 1`,
+                [user.id, gameVariant, AGENT_VERSION_MIN, AGENT_VERSION_MAX]
+            )
+        } else {
+            // Human joining - can match with anyone
+            ;[waitingSessions] = await conn.execute(
+                `SELECT gs.*, u.name as user_one_name
+                 FROM game_sessions gs
+                 JOIN users u ON u.id = gs.user_one_id
+                 WHERE gs.status = 0
+                   AND gs.user_two_id IS NULL
+                   AND gs.user_one_id != ?
+                   AND gs.game_variant = ?
+                   AND gs.updated_at > DATE_SUB(NOW(3), INTERVAL 2 MINUTE)
+                 ORDER BY gs.created_at ASC
+                 LIMIT 1`,
+                [user.id, gameVariant]
+            )
+        }
 
         if (waitingSessions.length > 0) {
             logger.debug(
@@ -527,6 +567,15 @@ async function connect(req, res) {
 
         const user = await getOrCreateUser(conn, body)
         const ctx = { ...reqCtx, uid: user.id }
+
+        // Sync local game stats (android, bluetooth, passplay) from client
+        // Server only tracks web games - other stats come from client
+        if (body.u) {
+            const updated = await dbUpdateLocalStats(conn, user.id, body.u)
+            if (updated) {
+                logger.debug(ctx, "Synced local game stats from client")
+            }
+        }
 
         if (body.androidId) {
             await getOrCreateDevice(conn, user.id, body)

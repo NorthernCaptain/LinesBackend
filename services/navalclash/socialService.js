@@ -4,7 +4,7 @@
  * All rights reserved.
  */
 
-const { pool } = require("../../db/navalclash")
+const { pool, dbUpdateLocalStats } = require("../../db/navalclash")
 const { logger } = require("../../utils/logger")
 const { buildMdfMessage } = require("./gameService")
 
@@ -200,7 +200,7 @@ async function getRivals(req, res) {
         const [rows] = await pool.execute(
             `SELECT ul.list_type, ul.rival_id,
                     u.id, u.name, u.face, u.rank, u.stars, u.games, u.gameswon,
-                    u.uuid, u.status, u.lang, u.updated_at as lastseen
+                    u.uuid, u.status, u.lang, u.version, u.updated_at as lastseen
              FROM userlists ul
              JOIN users u ON u.id = ul.rival_id
              WHERE ul.user_id = ?
@@ -235,13 +235,13 @@ async function searchUsersByName(name, pin, maxResults) {
     let query, params
 
     if (pin) {
-        query = `SELECT id, name, face, \`rank\`, stars, games, gameswon, uuid, status, lang
+        query = `SELECT id, name, face, \`rank\`, stars, games, gameswon, uuid, status, lang, version
                  FROM users WHERE name = ? AND pin = ? LIMIT 1`
         params = [name, pin]
     } else {
         // Use template literal for LIMIT since execute() has issues with LIMIT parameters
         // maxResults is already validated by caller using Math.min()
-        query = `SELECT id, name, face, \`rank\`, stars, games, gameswon, uuid, status, lang
+        query = `SELECT id, name, face, \`rank\`, stars, games, gameswon, uuid, status, lang, version
                  FROM users WHERE name LIKE ? ORDER BY games DESC LIMIT ${maxResults}`
         params = [`%${name}%`]
     }
@@ -325,7 +325,7 @@ async function getRecentOpponents(req, res) {
                 gs.winner_id,
                 gs.created_at as played_at,
                 u.id, u.name, u.face, u.rank, u.stars, u.games, u.gameswon, u.uuid, u.status,
-                u.lang, u.updated_at as lastseen
+                u.lang, u.version, u.updated_at as lastseen
              FROM game_sessions gs
              JOIN users u ON u.id = CASE WHEN gs.user_one_id = ? THEN gs.user_two_id ELSE gs.user_one_id END
              WHERE (gs.user_one_id = ? OR gs.user_two_id = ?)
@@ -633,6 +633,15 @@ async function userMarker(req, res) {
         if (pur) {
             const conn = await pool.getConnection()
             try {
+                // First, update non-web stats from client (android, bt, passplay)
+                // Server only tracks web games - other stats come from client
+                if (u) {
+                    const updated = await dbUpdateLocalStats(conn, user.id, u)
+                    if (updated) {
+                        logger.debug(ctx, "Synced local game stats from client")
+                    }
+                }
+
                 const mdf = await buildMdfMessage(conn, user.id, v, ctx)
                 if (mdf) {
                     logger.debug(

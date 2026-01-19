@@ -49,31 +49,69 @@ async function dbCreateSession(sessionId, userId, version, gameVariant) {
     }
 }
 
+// AI agent version range (2100-2200)
+const AGENT_VERSION_MIN = 2100
+const AGENT_VERSION_MAX = 2200
+
+/**
+ * Checks if a version indicates an AI agent.
+ *
+ * @param {number} version - App version
+ * @returns {boolean} True if version is in the agent range
+ */
+function isAgentVersion(version) {
+    return version >= AGENT_VERSION_MIN && version <= AGENT_VERSION_MAX
+}
+
 /**
  * Finds a waiting session for matchmaking.
+ * Prevents agent vs agent matchmaking - agents can only play against humans.
  *
  * @param {number} excludeUserId - User ID to exclude from matching
  * @param {number} gameVariant - Game variant to match
+ * @param {number} joinerVersion - Version of the player trying to join
  * @param {Object} conn - Database connection (for transaction)
  * @returns {Promise<Object|null>} Waiting session or null
  */
-async function dbFindWaitingSession(excludeUserId, gameVariant, conn) {
+async function dbFindWaitingSession(excludeUserId, gameVariant, joinerVersion, conn) {
     const db = conn || pool
+    const joinerIsAgent = isAgentVersion(joinerVersion)
+
     try {
-        const [rows] = await db.execute(
-            `SELECT gs.*, u.name as user_one_name
-             FROM game_sessions gs
-             JOIN users u ON u.id = gs.user_one_id
-             WHERE gs.status = 0
-               AND gs.user_two_id IS NULL
-               AND gs.user_one_id != ?
-               AND gs.game_variant = ?
-               AND gs.updated_at > DATE_SUB(NOW(3), INTERVAL 2 MINUTE)
-             ORDER BY gs.created_at ASC
-             LIMIT 1
-             FOR UPDATE`,
-            [excludeUserId, gameVariant]
-        )
+        let query, params
+
+        if (joinerIsAgent) {
+            // Agent joining - only match with humans (non-agent versions)
+            query = `SELECT gs.*, u.name as user_one_name
+                     FROM game_sessions gs
+                     JOIN users u ON u.id = gs.user_one_id
+                     WHERE gs.status = 0
+                       AND gs.user_two_id IS NULL
+                       AND gs.user_one_id != ?
+                       AND gs.game_variant = ?
+                       AND gs.updated_at > DATE_SUB(NOW(3), INTERVAL 2 MINUTE)
+                       AND (gs.version_one < ? OR gs.version_one > ?)
+                     ORDER BY gs.created_at ASC
+                     LIMIT 1
+                     FOR UPDATE`
+            params = [excludeUserId, gameVariant, AGENT_VERSION_MIN, AGENT_VERSION_MAX]
+        } else {
+            // Human joining - can match with anyone
+            query = `SELECT gs.*, u.name as user_one_name
+                     FROM game_sessions gs
+                     JOIN users u ON u.id = gs.user_one_id
+                     WHERE gs.status = 0
+                       AND gs.user_two_id IS NULL
+                       AND gs.user_one_id != ?
+                       AND gs.game_variant = ?
+                       AND gs.updated_at > DATE_SUB(NOW(3), INTERVAL 2 MINUTE)
+                     ORDER BY gs.created_at ASC
+                     LIMIT 1
+                     FOR UPDATE`
+            params = [excludeUserId, gameVariant]
+        }
+
+        const [rows] = await db.execute(query, params)
         return rows.length > 0 ? rows[0] : null
     } catch (error) {
         console.error("dbFindWaitingSession error:", error)

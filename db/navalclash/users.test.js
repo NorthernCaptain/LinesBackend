@@ -20,6 +20,7 @@ const {
     dbUpdateUserPin,
     dbIsPinTaken,
     dbUpdateUserLastDevice,
+    dbUpdateLocalStats,
 } = require("./users")
 
 describe("db/navalclash/users", () => {
@@ -198,6 +199,98 @@ describe("db/navalclash/users", () => {
             expect(mockExecute).toHaveBeenCalledWith(
                 "UPDATE users SET last_device_id = ? WHERE id = ?",
                 [10, 1]
+            )
+        })
+    })
+
+    describe("dbUpdateLocalStats", () => {
+        it("should update local stats from client data", async () => {
+            mockExecute.mockResolvedValue([{ affectedRows: 1 }])
+
+            const clientUser = {
+                ga: [10, 5, 20, 3], // android, bt, web, passplay
+                wa: [8, 3, 15, 2],
+            }
+
+            const result = await dbUpdateLocalStats(null, 1, clientUser)
+
+            expect(result).toBe(true)
+            expect(mockExecute).toHaveBeenCalledWith(
+                expect.stringContaining("games_android = ?"),
+                [10, 5, 3, 8, 3, 2, 10, 5, 3, 8, 3, 2, 1]
+            )
+        })
+
+        it("should return false if ga array is missing", async () => {
+            const clientUser = { wa: [1, 2, 3, 4] }
+
+            const result = await dbUpdateLocalStats(null, 1, clientUser)
+
+            expect(result).toBe(false)
+            expect(mockExecute).not.toHaveBeenCalled()
+        })
+
+        it("should return false if wa array is missing", async () => {
+            const clientUser = { ga: [1, 2, 3, 4] }
+
+            const result = await dbUpdateLocalStats(null, 1, clientUser)
+
+            expect(result).toBe(false)
+            expect(mockExecute).not.toHaveBeenCalled()
+        })
+
+        it("should return false if clientUser is null", async () => {
+            const result = await dbUpdateLocalStats(null, 1, null)
+
+            expect(result).toBe(false)
+            expect(mockExecute).not.toHaveBeenCalled()
+        })
+
+        it("should use provided connection instead of pool", async () => {
+            const mockConn = {
+                execute: jest.fn().mockResolvedValue([{ affectedRows: 1 }]),
+            }
+
+            const clientUser = {
+                ga: [5, 2, 10, 1],
+                wa: [3, 1, 8, 0],
+            }
+
+            const result = await dbUpdateLocalStats(mockConn, 1, clientUser)
+
+            expect(result).toBe(true)
+            expect(mockConn.execute).toHaveBeenCalled()
+            expect(mockExecute).not.toHaveBeenCalled()
+        })
+
+        it("should return false on error", async () => {
+            mockExecute.mockRejectedValue(new Error("DB error"))
+
+            const clientUser = {
+                ga: [1, 2, 3, 4],
+                wa: [1, 1, 2, 1],
+            }
+
+            const result = await dbUpdateLocalStats(null, 1, clientUser)
+
+            expect(result).toBe(false)
+        })
+
+        it("should handle missing array indices with defaults", async () => {
+            mockExecute.mockResolvedValue([{ affectedRows: 1 }])
+
+            const clientUser = {
+                ga: [10], // only android
+                wa: [8, 3], // android, bt
+            }
+
+            const result = await dbUpdateLocalStats(null, 1, clientUser)
+
+            expect(result).toBe(true)
+            // Missing indices should default to 0
+            expect(mockExecute).toHaveBeenCalledWith(
+                expect.any(String),
+                [10, 0, 0, 8, 3, 0, 10, 0, 0, 8, 3, 0, 1]
             )
         })
     })

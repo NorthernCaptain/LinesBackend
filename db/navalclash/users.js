@@ -162,6 +162,76 @@ async function dbUpdateUserLastDevice(userId, deviceId) {
     }
 }
 
+/**
+ * Updates non-web game stats from client data.
+ * The server only tracks web games - android, bluetooth, and passplay stats
+ * are tracked locally on the device and synced via this function.
+ *
+ * Client sends stats in ga[] and wa[] arrays:
+ * - ga[0]/wa[0]: android games/wins
+ * - ga[1]/wa[1]: bluetooth games/wins
+ * - ga[2]/wa[2]: web games/wins (IGNORED - server is authoritative)
+ * - ga[3]/wa[3]: passplay games/wins
+ *
+ * @param {Object} conn - Database connection (or pool)
+ * @param {number} userId - User ID
+ * @param {Object} clientUser - Client's PlayerInfo object with ga/wa arrays
+ * @returns {Promise<boolean>} True if updated successfully
+ */
+async function dbUpdateLocalStats(conn, userId, clientUser) {
+    if (!clientUser || !Array.isArray(clientUser.ga) || !Array.isArray(clientUser.wa)) {
+        return false
+    }
+
+    const db = conn || pool
+    const ga = clientUser.ga
+    const wa = clientUser.wa
+
+    // Extract non-web stats (indices 0, 1, 3 - skip index 2 which is web)
+    const gamesAndroid = ga[0] || 0
+    const gamesBluetooth = ga[1] || 0
+    const gamesPassplay = ga[3] || 0
+    const winsAndroid = wa[0] || 0
+    const winsBluetooth = wa[1] || 0
+    const winsPassplay = wa[3] || 0
+
+    try {
+        // Update non-web stats and recalculate totals
+        // Total = android + bluetooth + web (from server) + passplay
+        await db.execute(
+            `UPDATE users SET
+                games_android = ?,
+                games_bluetooth = ?,
+                games_passplay = ?,
+                wins_android = ?,
+                wins_bluetooth = ?,
+                wins_passplay = ?,
+                games = ? + ? + games_web + ?,
+                gameswon = ? + ? + wins_web + ?
+             WHERE id = ?`,
+            [
+                gamesAndroid,
+                gamesBluetooth,
+                gamesPassplay,
+                winsAndroid,
+                winsBluetooth,
+                winsPassplay,
+                gamesAndroid,
+                gamesBluetooth,
+                gamesPassplay,
+                winsAndroid,
+                winsBluetooth,
+                winsPassplay,
+                userId,
+            ]
+        )
+        return true
+    } catch (error) {
+        console.error("dbUpdateLocalStats error:", error)
+        return false
+    }
+}
+
 module.exports = {
     dbFindUserByUuidAndName,
     dbFindUserById,
@@ -170,4 +240,5 @@ module.exports = {
     dbUpdateUserPin,
     dbIsPinTaken,
     dbUpdateUserLastDevice,
+    dbUpdateLocalStats,
 }

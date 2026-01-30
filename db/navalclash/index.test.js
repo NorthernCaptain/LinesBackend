@@ -79,4 +79,15 @@ describe("db/navalclash/index", () => {
         expect(db.dbGetCoins).toBeDefined()
         expect(db.dbGetInventory).toBeDefined()
     })
+
+    it("should export weapons functions", () => {
+        const db = require("./index")
+        expect(db.dbGetUserWeaponInventory).toBeDefined()
+        expect(db.dbGetTrackedWeapons).toBeDefined()
+        expect(db.dbSetTrackedWeapons).toBeDefined()
+        expect(db.dbGetWeaponUsage).toBeDefined()
+        expect(db.dbIncrementWeaponUsage).toBeDefined()
+        expect(db.dbConsumeWeapons).toBeDefined()
+        expect(db.dbGetSessionUserId).toBeDefined()
+    })
 })

@@ -10,9 +10,18 @@ const {
     dbLogTrainingShot,
     dbGetTrainingShotCount,
     dbFinalizeTrainingGame,
+    dbGetSessionUserId,
 } = require("../../db/navalclash")
 const { sendMessage } = require("./messageService")
 const { logger } = require("../../utils/logger")
+const {
+    validateWeaponPlacement,
+    trackWeaponPlacement,
+    trackRadarUsage,
+    trackShuffleUsage,
+    consumeLoserWeapons,
+} = require("./weaponService")
+const { submitScore } = require("./leaderboardService")
 
 // Bonus type indices (from GameBonus.java)
 const BONUS_TYPE = {
@@ -1218,6 +1227,42 @@ async function finish(req, res) {
                 },
                 `Game finished, winner: ${winnerId}, coins: +${winnerBonus}/-${Math.abs(loserBonus)}, stars: +${starBonus}`
             )
+
+            // Consume loser's weapons from inventory
+            // Winner keeps their weapons (no consumption)
+            const loserPlayer = won ? 1 - session.player : session.player
+            await consumeLoserWeapons(
+                session.baseSessionId,
+                loserPlayer,
+                conn,
+                ctx
+            )
+
+            // Submit score to leaderboard if winner provided score data
+            // Score is only recorded if:
+            // - Player won
+            // - Score > threshold (3000)
+            // - Game time >= 30 seconds
+            // - Not a duplicate
+            if (won && sc && sc.score) {
+                const scoreResult = await submitScore(
+                    winnerId,
+                    loserId,
+                    sc.score,
+                    sc.time || 0,
+                    3, // game_type: 3 = web
+                    gameSession.game_variant || 1,
+                    winnerRank,
+                    loserRank,
+                    ctx
+                )
+                if (scoreResult.success) {
+                    logger.info(
+                        { ...ctx, scoreId: scoreResult.scoreId, score: sc.score },
+                        "Score recorded to leaderboard"
+                    )
+                }
+            }
         } else {
             // Another request already processed the game - just log it
             logger.debug(
@@ -1293,7 +1338,9 @@ async function finish(req, res) {
 }
 
 /**
- * Dutch move endpoint - Flying Dutchman ship move.
+ * Dutch move endpoint - Flying Dutchman ship relocation.
+ * NOT forwarded to opponent - opponent sees new position via fldinfo.
+ * Just tracks the usage and returns OK.
  * Client sends: { sid, ocx, ocy, ncx, ncy, or }
  *
  * @param {Object} req - Express request
@@ -1301,25 +1348,24 @@ async function finish(req, res) {
  * @returns {Promise<Object>} JSON response
  */
 async function dutchMove(req, res) {
-    const { sid, ocx, ocy, ncx, ncy, or } = req.body
+    const { sid } = req.body
     const ctx = { reqId: req.requestId, sid }
 
-    logger.debug(ctx, "Dutch move request")
+    logger.debug(ctx, "Dutch move request (tracking only, not forwarded)")
 
     const session = validateSession(sid, res, ctx)
     if (!session) return
 
-    return sendAndRespond(
-        res,
-        session.sessionId,
-        "dutch",
-        { ocx, ocy, ncx, ncy, or },
-        ctx
-    )
+    // Dutch moves don't need explicit tracking - the Dutch ship itself
+    // is already tracked in weapons_tracked via wpl
+    // Just return OK without forwarding to opponent
+    return res.json({ type: "ok" })
 }
 
 /**
- * Ship move endpoint - submarine or ship move.
+ * Ship move endpoint - shuffle weapon ship move.
+ * NOT forwarded to opponent - opponent sees new position via fldinfo.
+ * Tracks shuffle usage and returns OK.
  * Client sends: { sid, ship }
  *
  * @param {Object} req - Express request
@@ -1327,15 +1373,97 @@ async function dutchMove(req, res) {
  * @returns {Promise<Object>} JSON response
  */
 async function shipMove(req, res) {
-    const { sid, ship } = req.body
+    const { sid } = req.body
     const ctx = { reqId: req.requestId, sid }
 
-    logger.debug(ctx, "Ship move request")
+    logger.debug(ctx, "Ship move request (tracking only, not forwarded)")
 
     const session = validateSession(sid, res, ctx)
     if (!session) return
 
-    return sendAndRespond(res, session.sessionId, "smove", { ship }, ctx)
+    // Track shuffle weapon usage
+    await trackShuffleUsage(session.baseSessionId, session.player, ctx)
+
+    // Return OK without forwarding to opponent
+    return res.json({ type: "ok" })
+}
+
+/**
+ * Weapon placement list endpoint - validates and tracks weapons.
+ * NOT forwarded to opponent - just validates against inventory.
+ * Weapons are consumed at game END, not here.
+ * Client sends: { sid, weap: [{ type, startX, startY, ... }, ...] }
+ *
+ * @param {Object} req - Express request
+ * @param {Object} res - Express response
+ * @returns {Promise<Object>} JSON response
+ */
+async function weaponsList(req, res) {
+    const { sid, weap } = req.body
+    const ctx = { reqId: req.requestId, sid }
+
+    logger.debug({ ...ctx, weapCount: weap?.length || 0 }, "Weapon list request")
+
+    const session = validateSession(sid, res, ctx)
+    if (!session) return
+
+    // Get user ID for this player
+    const userId = await dbGetSessionUserId(
+        session.baseSessionId,
+        session.player
+    )
+    if (!userId) {
+        logger.warn(ctx, "User ID not found for weapon validation")
+        return res.json({ type: "error", reason: "User not found" })
+    }
+
+    // Validate weapons against inventory
+    const validation = await validateWeaponPlacement(weap || [], userId, ctx)
+    if (!validation.valid) {
+        return res.json({ type: "error", reason: validation.error })
+    }
+
+    // Track weapons in session (NOT consumed yet - that happens at game end)
+    const tracked = await trackWeaponPlacement(
+        session.baseSessionId,
+        session.player,
+        validation.counts,
+        ctx
+    )
+    if (!tracked) {
+        return res.json({ type: "error", reason: "Failed to track weapons" })
+    }
+
+    logger.debug(
+        { ...ctx, counts: validation.counts },
+        "Weapons validated and tracked"
+    )
+
+    return res.json({ type: "ok" })
+}
+
+/**
+ * Radar activation endpoint - tracks radar usage.
+ * NOT forwarded to opponent - radar is client-side only.
+ * Client sends: { sid, x, y }
+ *
+ * @param {Object} req - Express request
+ * @param {Object} res - Express response
+ * @returns {Promise<Object>} JSON response
+ */
+async function radarActivation(req, res) {
+    const { sid } = req.body
+    const ctx = { reqId: req.requestId, sid }
+
+    logger.debug(ctx, "Radar activation request")
+
+    const session = validateSession(sid, res, ctx)
+    if (!session) return
+
+    // Track radar usage
+    await trackRadarUsage(session.baseSessionId, session.player, ctx)
+
+    return res.json({ type: "ok" })
 }
 
 module.exports = {
@@ -1349,6 +1477,9 @@ module.exports = {
     finish,
     dutchMove,
     shipMove,
+    // Weapon endpoints
+    weaponsList,
+    radarActivation,
     // Exported for testing
     validateSession,
     storeFieldData,

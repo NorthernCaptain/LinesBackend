@@ -4,7 +4,7 @@
 
 CREATE TABLE devices (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    android_id VARCHAR(32) NOT NULL,
+    android_id VARCHAR(64) NOT NULL,
     device VARCHAR(64),
     model VARCHAR(128),
     manufacturer VARCHAR(128),

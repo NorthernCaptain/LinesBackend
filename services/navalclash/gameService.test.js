@@ -32,6 +32,15 @@ jest.mock("../../db/navalclash", () => ({
     dbLogTrainingShot: jest.fn().mockResolvedValue(true),
     dbGetTrainingShotCount: jest.fn().mockResolvedValue(0),
     dbFinalizeTrainingGame: jest.fn().mockResolvedValue(true),
+    dbGetSessionUserId: jest.fn().mockResolvedValue(10),
+}))
+
+jest.mock("./weaponService", () => ({
+    validateWeaponPlacement: jest.fn().mockResolvedValue({ valid: true, counts: {} }),
+    trackWeaponPlacement: jest.fn().mockResolvedValue(true),
+    trackRadarUsage: jest.fn().mockResolvedValue(true),
+    trackShuffleUsage: jest.fn().mockResolvedValue(true),
+    consumeLoserWeapons: jest.fn().mockResolvedValue(true),
 }))
 
 const {
@@ -39,10 +48,17 @@ const {
     dbLogTrainingShot,
     dbGetTrainingShotCount,
     dbFinalizeTrainingGame,
+    dbGetSessionUserId,
 } = require("../../db/navalclash")
+
+const { trackShuffleUsage } = require("./weaponService")
 
 jest.mock("./messageService", () => ({
     sendMessage: jest.fn().mockResolvedValue(1),
+}))
+
+jest.mock("./leaderboardService", () => ({
+    submitScore: jest.fn().mockResolvedValue({ success: true, scoreId: 123 }),
 }))
 
 const {
@@ -898,7 +914,11 @@ describe("services/navalclash/gameService", () => {
     describe("dutchMove", () => {
         const mockRes = { json: jest.fn() }
 
-        it("should send dutch message", async () => {
+        beforeEach(() => {
+            mockRes.json.mockClear()
+        })
+
+        it("should return ok without forwarding to opponent", async () => {
             const req = {
                 requestId: "test",
                 body: { sid: "1000", ocx: 1, ocy: 2, ncx: 3, ncy: 4, or: 0 },
@@ -906,12 +926,17 @@ describe("services/navalclash/gameService", () => {
 
             await dutchMove(req, mockRes)
 
-            expect(sendMessage).toHaveBeenCalledWith(1000n, "dutch", {
-                ocx: 1,
-                ocy: 2,
-                ncx: 3,
-                ncy: 4,
-                or: 0,
+            // Dutch moves are NOT forwarded to opponent
+            expect(sendMessage).not.toHaveBeenCalled()
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
+        })
+
+        it("should return error if no session ID", async () => {
+            await dutchMove({ requestId: "test", body: {} }, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "error",
+                reason: "No session",
             })
         })
     })
@@ -919,7 +944,11 @@ describe("services/navalclash/gameService", () => {
     describe("shipMove", () => {
         const mockRes = { json: jest.fn() }
 
-        it("should send smove message", async () => {
+        beforeEach(() => {
+            mockRes.json.mockClear()
+        })
+
+        it("should return ok without forwarding to opponent", async () => {
             const req = {
                 requestId: "test",
                 body: { sid: "1001", ship: { id: 1, dir: "up" } },
@@ -927,8 +956,17 @@ describe("services/navalclash/gameService", () => {
 
             await shipMove(req, mockRes)
 
-            expect(sendMessage).toHaveBeenCalledWith(1001n, "smove", {
-                ship: { id: 1, dir: "up" },
+            // Ship moves are NOT forwarded to opponent
+            expect(sendMessage).not.toHaveBeenCalled()
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
+        })
+
+        it("should return error if no session ID", async () => {
+            await shipMove({ requestId: "test", body: {} }, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "error",
+                reason: "No session",
             })
         })
     })

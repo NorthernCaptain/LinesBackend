@@ -45,6 +45,25 @@ async function dbFindUserById(id) {
 }
 
 /**
+ * Finds a user by UUID.
+ *
+ * @param {string} uuid - User UUID
+ * @returns {Promise<Object|null>} User object or null if not found
+ */
+async function dbFindUserByUuid(uuid) {
+    try {
+        const [rows] = await pool.execute(
+            "SELECT * FROM users WHERE uuid = ? LIMIT 1",
+            [uuid]
+        )
+        return rows.length > 0 ? rows[0] : null
+    } catch (error) {
+        console.error("dbFindUserByUuid error:", error)
+        return null
+    }
+}
+
+/**
  * Creates a new user.
  *
  * @param {Object} userData - User data
@@ -143,6 +162,83 @@ async function dbIsPinTaken(name, pin, excludeUserId) {
 }
 
 /**
+ * Finds a user by name and PIN (for profile import).
+ *
+ * @param {string} name - Player name
+ * @param {number} pin - Profile recovery PIN
+ * @returns {Promise<Object|null>} User object or null if not found
+ */
+async function dbFindUserByNameAndPin(name, pin) {
+    try {
+        const [rows] = await pool.execute(
+            "SELECT * FROM users WHERE name = ? AND pin = ? AND id != 0",
+            [name, pin]
+        )
+        return rows.length > 0 ? rows[0] : null
+    } catch (error) {
+        console.error("dbFindUserByNameAndPin error:", error)
+        return null
+    }
+}
+
+/**
+ * Updates user profile data from export request.
+ * Updates stats, face, language, timezone, and coins from client data.
+ *
+ * @param {Object} conn - Database connection
+ * @param {number} userId - User ID
+ * @param {Object} userData - Client's PlayerInfo object
+ * @returns {Promise<boolean>} True if updated successfully
+ */
+async function dbUpdateUserProfile(conn, userId, userData) {
+    try {
+        await conn.execute(
+            `UPDATE users SET
+                face = COALESCE(?, face),
+                lang = COALESCE(?, lang),
+                tz = COALESCE(?, tz),
+                coins = COALESCE(?, coins),
+                updated_at = NOW()
+             WHERE id = ?`,
+            [
+                userData.fc ?? null,
+                userData.l ?? null,
+                userData.tz ?? null,
+                userData.an ?? null,
+                userId,
+            ]
+        )
+        return true
+    } catch (error) {
+        console.error("dbUpdateUserProfile error:", error)
+        return false
+    }
+}
+
+/**
+ * Logs a profile action (export/import) for audit purposes.
+ *
+ * @param {number} userId - User ID
+ * @param {string} action - Action type ('export' or 'import')
+ * @param {string} details - Additional details
+ * @returns {Promise<boolean>} True if logged successfully
+ */
+async function dbLogProfileAction(userId, action, details) {
+    try {
+        await pool.execute(
+            `INSERT INTO profile_logs (user_id, action, details, created_at)
+             VALUES (?, ?, ?, NOW())`,
+            [userId, action, details]
+        )
+        return true
+    } catch (error) {
+        // Log table might not exist, just log to console
+        console.log(`Profile action: user=${userId} action=${action} ${details}`)
+        return false
+    }
+}
+
+/**
  * Updates user's last device ID.
  *
  * @param {number} userId - User ID
@@ -235,10 +331,14 @@ async function dbUpdateLocalStats(conn, userId, clientUser) {
 module.exports = {
     dbFindUserByUuidAndName,
     dbFindUserById,
+    dbFindUserByUuid,
     dbCreateUser,
     dbUpdateUserLogin,
     dbUpdateUserPin,
     dbIsPinTaken,
+    dbFindUserByNameAndPin,
+    dbUpdateUserProfile,
+    dbLogProfileAction,
     dbUpdateUserLastDevice,
     dbUpdateLocalStats,
 }

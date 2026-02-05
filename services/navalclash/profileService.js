@@ -7,8 +7,11 @@
 const {
     pool,
     dbFindUserByUuidAndName,
+    dbFindUserByUuid,
     dbFindUserByNameAndPin,
+    dbCreateUser,
     dbUpdateUserProfile,
+    dbSyncUserProfile,
     dbUpdateLocalStats,
     dbLogProfileAction,
 } = require("../../db/navalclash")
@@ -242,7 +245,85 @@ async function importProfile(req, res) {
     }
 }
 
+/**
+ * Sync profile endpoint handler (UFV - User Field Version).
+ * Updates user profile data and local game stats on the server.
+ * Used for periodic profile synchronization.
+ *
+ * @param {Object} req - Express request
+ * @param {Object} res - Express response
+ * @returns {Promise<void>}
+ */
+async function syncProfile(req, res) {
+    const body = req.body
+    const clientUser = body.u
+    const version = body.v || body.V || 0
+    const ignoreErrors = body.ig === 1
+    const ctx = { type: "ufv", v: version }
+
+    logger.debug(ctx, "Profile sync request received")
+
+    // Validate request
+    if (!clientUser || !clientUser.id) {
+        logger.debug(ctx, "Invalid sync request - missing user data")
+        if (ignoreErrors) {
+            return res.json({ type: "ok" })
+        }
+        return res.json({ type: "error", reason: "Invalid request" })
+    }
+
+    ctx.uuid = clientUser.id
+    ctx.name = clientUser.nam
+
+    try {
+        // Find user by UUID + name first, then by UUID only
+        let user = await dbFindUserByUuidAndName(clientUser.id, clientUser.nam)
+
+        if (!user) {
+            user = await dbFindUserByUuid(clientUser.id)
+        }
+
+        if (!user) {
+            // User not found - create new user (like old Java server)
+            logger.info(ctx, "User not found, creating new user for sync")
+            const newUserId = await dbCreateUser({
+                name: clientUser.nam || "Player",
+                uuid: clientUser.id,
+                gameVariant: body.var || 1,
+            })
+
+            if (!newUserId) {
+                logger.error(ctx, "Failed to create user for sync")
+                if (ignoreErrors) {
+                    return res.json({ type: "ok" })
+                }
+                return res.json({ type: "error", reason: "Failed to create user" })
+            }
+
+            ctx.uid = newUserId
+            logger.info(ctx, "Created new user for profile sync")
+        } else {
+            ctx.uid = user.id
+        }
+
+        // Sync profile data
+        const updated = await dbSyncUserProfile(ctx.uid, clientUser, version)
+        if (updated) {
+            logger.debug(ctx, "Profile synced successfully")
+        }
+
+        return res.json({ type: "ok" })
+    } catch (error) {
+        logger.error(ctx, "Profile sync failed:", error.message)
+        if (ignoreErrors) {
+            return res.json({ type: "ok" })
+        }
+        return res.json({ type: "error", reason: "Server error" })
+    }
+}
+
 module.exports = {
     exportProfile,
     importProfile,
+    syncProfile,
 }

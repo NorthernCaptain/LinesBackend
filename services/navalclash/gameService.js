@@ -6,7 +6,6 @@
 
 const {
     pool,
-    SESSION_STATUS,
     dbLogTrainingShot,
     dbGetTrainingShotCount,
     dbFinalizeTrainingGame,
@@ -22,26 +21,15 @@ const {
     consumeLoserWeapons,
 } = require("./weaponService")
 const { submitScore } = require("./leaderboardService")
-
-// Bonus type indices (from GameBonus.java)
-const BONUS_TYPE = {
-    WIN_BONUS: 0,
-    LOST_BONUS: 1,
-    SURRENDER_WIN_BONUS: 2,
-    SURRENDER_LOST_BONUS: 3,
-    INTERRUPT_WIN_BONUS: 4,
-    INTERRUPT_LOST_BONUS: 5,
-    // Index 6 is unused
-    LOST_BONUS_WITH_WEAPONS: 7,
-}
-
-// Base coins for normal win
-const BASE_WIN_COINS = 9
-// Max rank difference bonus/penalty
-const MAX_RANK_DELTA = 5
-
-// Version threshold for paid vs free version
-const PAID_VERSION_MIN = 2000
+const {
+    MSG,
+    SESSION_STATUS,
+    BONUS_TYPE,
+    BASE_WIN_COINS,
+    MAX_RANK_DELTA,
+    VERSION,
+    FIELD,
+} = require("./constants")
 
 // Rank thresholds (stars required for each rank - from UserBaseData.java)
 // Paid version has 9 ranks (0-8)
@@ -77,9 +65,9 @@ const RANK_THRESHOLDS = RANK_THRESHOLDS_PAID
  * @param {number} version - App version (default: paid version)
  * @returns {number} Rank
  */
-function calculateRank(stars, version = PAID_VERSION_MIN) {
+function calculateRank(stars, version = VERSION.PAID_MIN) {
     const thresholds =
-        version >= PAID_VERSION_MIN
+        version >= VERSION.PAID_MIN
             ? RANK_THRESHOLDS_PAID
             : RANK_THRESHOLDS_FREE
 
@@ -106,7 +94,6 @@ function clamp(value, min, max) {
 // Obfuscation constants (from UserBaseData.java)
 const XOR_VAL1 = 0x1824ead3
 const XOR_VAL2 = 0x5c83cb3d
-const SHIFT_VAL = 5
 
 /**
  * Encodes a value using the client's obfuscation algorithm.
@@ -118,7 +105,7 @@ const SHIFT_VAL = 5
 function val2mess(origval) {
     let val = origval < 0 ? -origval : origval
     val ^= XOR_VAL1
-    val = (val << SHIFT_VAL) >>> 0 // unsigned shift
+    val = (val << FIELD.SHIFT_VAL) >>> 0 // unsigned shift
     val ^= XOR_VAL2
     val = Math.floor(val / 3)
     val = (val << 1) >>> 0
@@ -809,13 +796,10 @@ async function yourTurn(req, res) {
     return sendAndRespond(res, session.sessionId, "yourturn", { time }, ctx)
 }
 
-// Info message types (from InfoMessage.java)
-const MSG_LEFT_SCREEN = 5
-
 /**
  * Info endpoint - sends info message.
  * Client sends: { sid, msg, u }
- * Special handling for MSG_LEFT_SCREEN (player leaving/surrendering).
+ * Special handling for MSG.LEFT_SCREEN (player leaving/surrendering).
  *
  * @param {Object} req - Express request
  * @param {Object} res - Express response
@@ -832,7 +816,7 @@ async function info(req, res) {
 
     // Check if this is a "left screen" message (player leaving/surrendering)
     const msgType = msg?.m
-    if (msgType === MSG_LEFT_SCREEN) {
+    if (msgType === MSG.LEFT_SCREEN) {
         return handlePlayerLeft(req, res, session, msg, u, ctx)
     }
 
@@ -841,7 +825,7 @@ async function info(req, res) {
 }
 
 /**
- * Handles player leaving the game (MSG_LEFT_SCREEN).
+ * Handles player leaving the game (MSG.LEFT_SCREEN).
  * If waiting for opponent: terminates session.
  * If game started: opponent wins by surrender.
  *
@@ -1484,17 +1468,10 @@ module.exports = {
     validateSession,
     storeFieldData,
     determineWinnerLoser,
-    // Coin calculation functions
-    BONUS_TYPE,
     calculateWinBonus,
     calculateBonusCoins,
     clamp,
     buildBonusObject,
-    // Rank calculation
-    PAID_VERSION_MIN,
-    RANK_THRESHOLDS,
-    RANK_THRESHOLDS_PAID,
-    RANK_THRESHOLDS_FREE,
     calculateRank,
     // Profile data
     buildMdfMessage,

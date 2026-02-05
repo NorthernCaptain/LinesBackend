@@ -43,6 +43,7 @@ function router(app) {
         getRecentOpponents,
         getOnlineUsers,
         userMarker,
+        userAnswer,
     } = require("../services/navalclash/socialService")
     const { getTopScores } = require("../services/navalclash/leaderboardService")
     const {
@@ -53,6 +54,7 @@ function router(app) {
     const {
         exportProfile,
         importProfile,
+        syncProfile,
     } = require("../services/navalclash/profileService")
 
     // Phase 1: Connect & Users
@@ -85,6 +87,7 @@ function router(app) {
     r.post("/usearch", searchUsers)
     r.post("/ugetrcnt", getRecentOpponents)
     r.post("/ugetair", getOnlineUsers)
+    r.post("/uanswer", userAnswer)
 
     // Phase 5: Leaderboard & Shop (no Google billing)
     r.post("/topTen", getTopScores)
@@ -95,7 +98,7 @@ function router(app) {
     // Phase 6: Profile Management
     r.post("/uexp", exportProfile)
     r.post("/uimp", importProfile)
-    // r.post("/ufv", syncProfile) - TODO: implement profile sync
+    r.post("/ufv", syncProfile)
 
     // Debug/test endpoint for remote logging
     r.post("/echo", (req, res) => {

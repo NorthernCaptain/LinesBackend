@@ -13,37 +13,7 @@ const {
     dbGetSessionUserId,
 } = require("../../db/navalclash/weapons")
 const { logger } = require("../../utils/logger")
-
-/**
- * Weapon type ID mapping.
- * Maps weapon codes to numeric IDs used in inventory.
- */
-const WEAPON_CODE_TO_ID = {
-    wmn: "0", // Mine
-    mine: "0",
-    dch: "1", // Dutch
-    dutch: "1",
-    anr: "2", // Radar
-    radar: "2",
-    smw: "3", // Shuffle
-    shuffle: "3",
-    sth: "4", // Stealth
-    stealth: "4",
-    cls: "5", // Classic shield
-    cshield: "5",
-}
-
-/**
- * Weapon ID to name mapping for logging.
- */
-const WEAPON_ID_TO_NAME = {
-    0: "mine",
-    1: "dutch",
-    2: "radar",
-    3: "shuffle",
-    4: "stealth",
-    5: "cshield",
-}
+const { WEAPON_CODE_TO_ID, WEAPON_ID_TO_NAME } = require("./constants")
 
 /**
  * Converts weapon code to inventory item ID.

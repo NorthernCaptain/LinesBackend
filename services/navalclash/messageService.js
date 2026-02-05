@@ -8,13 +8,9 @@ const { pool } = require("../../db/navalclash")
 const cluster = require("cluster")
 const { v4: uuid } = require("uuid")
 const { logger } = require("../../utils/logger")
+const { TIMING } = require("./constants")
 
 const pendingPolls = new Map()
-
-/**
- * Default long-poll timeout in milliseconds.
- */
-const POLL_TIMEOUT_MS = 30000
 
 /**
  * Computes opponent's session ID by flipping the last bit.
@@ -239,7 +235,7 @@ function setupLongPoll(res, sessionId, afterMsgId, clientPollId, requestId) {
             }
             pollData.res.json({ type: "empty" })
         }
-    }, POLL_TIMEOUT_MS)
+    }, TIMING.POLL_TIMEOUT_MS)
 
     pendingPolls.set(requestId, {
         res,
@@ -446,5 +442,4 @@ module.exports = {
     // Exported for testing
     handleWake,
     handleCancel,
-    POLL_TIMEOUT_MS,
 }

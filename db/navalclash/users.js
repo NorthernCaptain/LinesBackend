@@ -216,6 +216,87 @@ async function dbUpdateUserProfile(conn, userId, userData) {
 }
 
 /**
+ * Syncs user profile data from UFV request.
+ * Updates profile fields and non-web game stats from client.
+ * Server remains authoritative for web game stats.
+ *
+ * @param {number} userId - User ID
+ * @param {Object} clientUser - Client's PlayerInfo object
+ * @param {number} version - Client version
+ * @returns {Promise<boolean>} True if updated successfully
+ */
+async function dbSyncUserProfile(userId, clientUser, version) {
+    if (!clientUser) {
+        return false
+    }
+
+    try {
+        // Update profile fields (face, lang, tz) and version
+        await pool.execute(
+            `UPDATE users SET
+                face = COALESCE(?, face),
+                lang = COALESCE(?, lang),
+                tz = COALESCE(?, tz),
+                version = ?,
+                updated_at = NOW()
+             WHERE id = ?`,
+            [
+                clientUser.fc ?? null,
+                clientUser.l ?? null,
+                clientUser.tz ?? null,
+                version || 0,
+                userId,
+            ]
+        )
+
+        // Update non-web game stats if provided
+        // Server is authoritative for web stats, client for android/bt/passplay
+        if (Array.isArray(clientUser.ga) && Array.isArray(clientUser.wa)) {
+            const gamesAndroid = clientUser.ga[0] || 0
+            const gamesBluetooth = clientUser.ga[1] || 0
+            const gamesPassplay = clientUser.ga[3] || 0
+            const winsAndroid = clientUser.wa[0] || 0
+            const winsBluetooth = clientUser.wa[1] || 0
+            const winsPassplay = clientUser.wa[3] || 0
+
+            // Update non-web stats and recalculate totals
+            await pool.execute(
+                `UPDATE users SET
+                    games_android = ?,
+                    games_bluetooth = ?,
+                    games_passplay = ?,
+                    wins_android = ?,
+                    wins_bluetooth = ?,
+                    wins_passplay = ?,
+                    games = ? + ? + games_web + ?,
+                    gameswon = ? + ? + wins_web + ?
+                 WHERE id = ?`,
+                [
+                    gamesAndroid,
+                    gamesBluetooth,
+                    gamesPassplay,
+                    winsAndroid,
+                    winsBluetooth,
+                    winsPassplay,
+                    gamesAndroid,
+                    gamesBluetooth,
+                    gamesPassplay,
+                    winsAndroid,
+                    winsBluetooth,
+                    winsPassplay,
+                    userId,
+                ]
+            )
+        }
+
+        return true
+    } catch (error) {
+        console.error("dbSyncUserProfile error:", error)
+        return false
+    }
+}
+
+/**
  * Logs a profile action (export/import) for audit purposes.
  *
  * @param {number} userId - User ID
@@ -338,6 +419,7 @@ module.exports = {
     dbIsPinTaken,
     dbFindUserByNameAndPin,
     dbUpdateUserProfile,
+    dbSyncUserProfile,
     dbLogProfileAction,
     dbUpdateUserLastDevice,
     dbUpdateLocalStats,

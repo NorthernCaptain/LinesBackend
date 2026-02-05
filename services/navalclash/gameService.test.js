@@ -74,18 +74,21 @@ const {
     shipMove,
     validateSession,
     determineWinnerLoser,
-    BONUS_TYPE,
     calculateWinBonus,
     calculateBonusCoins,
     clamp,
     buildBonusObject,
-    PAID_VERSION_MIN,
-    RANK_THRESHOLDS,
-    RANK_THRESHOLDS_PAID,
-    RANK_THRESHOLDS_FREE,
     calculateRank,
     val2mess,
 } = require("./gameService")
+
+const {
+    BONUS_TYPE,
+    VERSION,
+    RANK_THRESHOLDS,
+    RANK_THRESHOLDS_PAID,
+    RANK_THRESHOLDS_FREE,
+} = require("./constants")
 
 const { sendMessage } = require("./messageService")
 
@@ -372,33 +375,33 @@ describe("services/navalclash/gameService", () => {
     })
 
     describe("RANK_THRESHOLDS", () => {
-        it("should have 9 rank thresholds (paid)", () => {
-            expect(RANK_THRESHOLDS).toHaveLength(9)
-            expect(RANK_THRESHOLDS_PAID).toHaveLength(9)
+        it("should have 11 rank thresholds (paid)", () => {
+            expect(RANK_THRESHOLDS).toHaveLength(11)
+            expect(RANK_THRESHOLDS_PAID).toHaveLength(11)
         })
 
-        it("should have 4 rank thresholds (free)", () => {
-            expect(RANK_THRESHOLDS_FREE).toHaveLength(4)
+        it("should have 11 rank thresholds (free)", () => {
+            expect(RANK_THRESHOLDS_FREE).toHaveLength(11)
         })
 
-        it("should be sorted by stars descending (paid)", () => {
+        it("should be sorted by stars ascending (paid)", () => {
             for (let i = 1; i < RANK_THRESHOLDS_PAID.length; i++) {
-                expect(RANK_THRESHOLDS_PAID[i - 1].stars).toBeGreaterThan(
-                    RANK_THRESHOLDS_PAID[i].stars
+                expect(RANK_THRESHOLDS_PAID[i]).toBeGreaterThanOrEqual(
+                    RANK_THRESHOLDS_PAID[i - 1]
                 )
             }
         })
 
-        it("should be sorted by stars descending (free)", () => {
+        it("should be sorted by stars ascending (free)", () => {
             for (let i = 1; i < RANK_THRESHOLDS_FREE.length; i++) {
-                expect(RANK_THRESHOLDS_FREE[i - 1].stars).toBeGreaterThan(
-                    RANK_THRESHOLDS_FREE[i].stars
+                expect(RANK_THRESHOLDS_FREE[i]).toBeGreaterThanOrEqual(
+                    RANK_THRESHOLDS_FREE[i - 1]
                 )
             }
         })
 
-        it("PAID_VERSION_MIN should be 2000", () => {
-            expect(PAID_VERSION_MIN).toBe(2000)
+        it("VERSION.PAID_MIN should be 2000", () => {
+            expect(VERSION.PAID_MIN).toBe(2000)
         })
     })
 

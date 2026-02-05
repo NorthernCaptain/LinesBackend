@@ -4,7 +4,7 @@
  * All rights reserved.
  */
 
-const { exportProfile, importProfile } = require("./profileService")
+const { exportProfile, importProfile, syncProfile } = require("./profileService")
 
 // Mock the database module
 jest.mock("../../db/navalclash", () => {
@@ -15,8 +15,11 @@ jest.mock("../../db/navalclash", () => {
     return {
         pool: mockPool,
         dbFindUserByUuidAndName: jest.fn(),
+        dbFindUserByUuid: jest.fn(),
         dbFindUserByNameAndPin: jest.fn(),
+        dbCreateUser: jest.fn(),
         dbUpdateUserProfile: jest.fn(),
+        dbSyncUserProfile: jest.fn(),
         dbUpdateLocalStats: jest.fn(),
         dbLogProfileAction: jest.fn(),
     }
@@ -35,8 +38,11 @@ jest.mock("../../utils/logger", () => ({
 const {
     pool,
     dbFindUserByUuidAndName,
+    dbFindUserByUuid,
     dbFindUserByNameAndPin,
+    dbCreateUser,
     dbUpdateUserProfile,
+    dbSyncUserProfile,
     dbUpdateLocalStats,
     dbLogProfileAction,
 } = require("../../db/navalclash")
@@ -363,6 +369,153 @@ describe("profileService", () => {
             await importProfile(mockReq, mockRes)
 
             expect(dbLogProfileAction).toHaveBeenCalledWith(42, "import", "v=30")
+        })
+    })
+
+    describe("syncProfile", () => {
+        it("should return ok for valid sync request with existing user", async () => {
+            const user = { id: 42, name: "TestPlayer" }
+            mockReq = {
+                body: {
+                    u: {
+                        id: "uuid123",
+                        nam: "TestPlayer",
+                        fc: 2,
+                        l: "en",
+                        tz: -300,
+                        ga: [10, 5, 30, 5],
+                        wa: [6, 3, 18, 3],
+                    },
+                    v: 25,
+                    f: 1,
+                },
+            }
+
+            dbFindUserByUuidAndName.mockResolvedValue(user)
+            dbSyncUserProfile.mockResolvedValue(true)
+
+            await syncProfile(mockReq, mockRes)
+
+            expect(dbFindUserByUuidAndName).toHaveBeenCalledWith("uuid123", "TestPlayer")
+            expect(dbSyncUserProfile).toHaveBeenCalledWith(42, mockReq.body.u, 25)
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
+        })
+
+        it("should find user by UUID only if not found by UUID+name", async () => {
+            const user = { id: 42, name: "TestPlayer" }
+            mockReq = {
+                body: {
+                    u: { id: "uuid123", nam: "TestPlayer" },
+                    v: 25,
+                },
+            }
+
+            dbFindUserByUuidAndName.mockResolvedValue(null)
+            dbFindUserByUuid.mockResolvedValue(user)
+            dbSyncUserProfile.mockResolvedValue(true)
+
+            await syncProfile(mockReq, mockRes)
+
+            expect(dbFindUserByUuidAndName).toHaveBeenCalledWith("uuid123", "TestPlayer")
+            expect(dbFindUserByUuid).toHaveBeenCalledWith("uuid123")
+            expect(dbSyncUserProfile).toHaveBeenCalledWith(42, mockReq.body.u, 25)
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
+        })
+
+        it("should create user when not found", async () => {
+            mockReq = {
+                body: {
+                    u: { id: "new-uuid-123", nam: "NewPlayer" },
+                    v: 25,
+                    var: 1,
+                },
+            }
+
+            dbFindUserByUuidAndName.mockResolvedValue(null)
+            dbFindUserByUuid.mockResolvedValue(null)
+            dbCreateUser.mockResolvedValue(99)
+            dbSyncUserProfile.mockResolvedValue(true)
+
+            await syncProfile(mockReq, mockRes)
+
+            expect(dbCreateUser).toHaveBeenCalledWith({
+                name: "NewPlayer",
+                uuid: "new-uuid-123",
+                gameVariant: 1,
+            })
+            expect(dbSyncUserProfile).toHaveBeenCalledWith(99, mockReq.body.u, 25)
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
+        })
+
+        it("should return ok even on error when ignoreErrors is set", async () => {
+            mockReq = {
+                body: {
+                    u: { id: "uuid123" },
+                    ig: 1, // ignoreErrors
+                },
+            }
+
+            dbFindUserByUuidAndName.mockRejectedValue(new Error("DB error"))
+
+            await syncProfile(mockReq, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
+        })
+
+        it("should return error when user creation fails and ignoreErrors not set", async () => {
+            mockReq = {
+                body: {
+                    u: { id: "new-uuid-123", nam: "NewPlayer" },
+                    v: 25,
+                },
+            }
+
+            dbFindUserByUuidAndName.mockResolvedValue(null)
+            dbFindUserByUuid.mockResolvedValue(null)
+            dbCreateUser.mockResolvedValue(null) // Creation failed
+
+            await syncProfile(mockReq, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "error",
+                reason: "Failed to create user",
+            })
+        })
+
+        it("should return ok when user creation fails but ignoreErrors is set", async () => {
+            mockReq = {
+                body: {
+                    u: { id: "new-uuid-123", nam: "NewPlayer" },
+                    ig: 1, // ignoreErrors
+                },
+            }
+
+            dbFindUserByUuidAndName.mockResolvedValue(null)
+            dbFindUserByUuid.mockResolvedValue(null)
+            dbCreateUser.mockResolvedValue(null) // Creation failed
+
+            await syncProfile(mockReq, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
+        })
+
+        it("should return error for missing user data when ignoreErrors not set", async () => {
+            mockReq = { body: {} }
+
+            await syncProfile(mockReq, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "error",
+                reason: "Invalid request",
+            })
+        })
+
+        it("should return ok for missing user data when ignoreErrors is set", async () => {
+            mockReq = { body: { ig: 1 } }
+
+            await syncProfile(mockReq, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
         })
     })
 })

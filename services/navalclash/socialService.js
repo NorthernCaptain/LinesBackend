@@ -7,17 +7,8 @@
 const { pool, dbUpdateLocalStats } = require("../../db/navalclash")
 const { logger } = require("../../utils/logger")
 const { buildMdfMessage } = require("./gameService")
-
-const LIST_TYPE_FRIENDS = 1
-const LIST_TYPE_BLOCKED = 2
-
-// RivalInfo type constants (must match client's RivalInfo.java)
-const RivalInfo = {
-    TYPE_SEARCH: 1,
-    TYPE_RECENT: 2,
-    TYPE_SAVED: 3,      // Friends list
-    TYPE_REJECTED: 4,   // Blocked list
-}
+const { sendMessage } = require("./messageService")
+const { MSG, LIST_TYPE, RIVAL_TYPE, USER_STATUS } = require("./constants")
 
 /**
  * Serializes a rival object for API response.
@@ -70,7 +61,7 @@ function serializeRival(row) {
 function serializeSearchUser(row) {
     return {
         ...serializeRival(row),
-        t: RivalInfo.TYPE_SEARCH,
+        t: RIVAL_TYPE.SEARCH,
     }
 }
 
@@ -104,7 +95,7 @@ async function addRival(req, res) {
     }
 
     ctx.uid = user.id
-    const listType = tp === LIST_TYPE_BLOCKED ? LIST_TYPE_BLOCKED : LIST_TYPE_FRIENDS
+    const listType = tp === LIST_TYPE.BLOCKED ? LIST_TYPE.BLOCKED : LIST_TYPE.FRIENDS
 
     try {
         await pool.execute(
@@ -113,7 +104,7 @@ async function addRival(req, res) {
              ON DUPLICATE KEY UPDATE list_type = VALUES(list_type)`,
             [user.id, listType, rid]
         )
-        logger.info(ctx, `Rival added to ${listType === LIST_TYPE_BLOCKED ? "blocked" : "friends"} list`)
+        logger.info(ctx, `Rival added to ${listType === LIST_TYPE.BLOCKED ? "blocked" : "friends"} list`)
         return res.json({ type: "uok" })
     } catch (error) {
         logger.error(ctx, "addRival error:", error.message)
@@ -151,14 +142,14 @@ async function deleteRival(req, res) {
     }
 
     ctx.uid = user.id
-    const listType = tp === LIST_TYPE_BLOCKED ? LIST_TYPE_BLOCKED : LIST_TYPE_FRIENDS
+    const listType = tp === LIST_TYPE.BLOCKED ? LIST_TYPE.BLOCKED : LIST_TYPE.FRIENDS
 
     try {
         await pool.execute(
             "DELETE FROM userlists WHERE user_id = ? AND rival_id = ? AND list_type = ?",
             [user.id, rid, listType]
         )
-        logger.info(ctx, `Rival removed from ${listType === LIST_TYPE_BLOCKED ? "blocked" : "friends"} list`)
+        logger.info(ctx, `Rival removed from ${listType === LIST_TYPE.BLOCKED ? "blocked" : "friends"} list`)
         return res.json({ type: "uok" })
     } catch (error) {
         logger.error(ctx, "deleteRival error:", error.message)
@@ -212,7 +203,7 @@ async function getRivals(req, res) {
         const rivals = rows.map((row) => ({
             ...serializeRival(row),
             // Map list_type (1=friends, 2=blocked) to RivalInfo type (3=saved, 4=rejected)
-            t: row.list_type === LIST_TYPE_FRIENDS ? RivalInfo.TYPE_SAVED : RivalInfo.TYPE_REJECTED,
+            t: row.list_type === LIST_TYPE.FRIENDS ? RIVAL_TYPE.SAVED : RIVAL_TYPE.REJECTED,
         }))
 
         logger.debug(ctx, `Returning ${rivals.length} rivals`)
@@ -338,7 +329,7 @@ async function getRecentOpponents(req, res) {
 
         const opponents = rows.map((row) => ({
             ...serializeRival(row),
-            t: RivalInfo.TYPE_RECENT,                           // Type = recent opponent
+            t: RIVAL_TYPE.RECENT,                           // Type = recent opponent
             iw: row.winner_id === user.id ? 1 : 0,              // I won flag
             gp: Math.floor(new Date(row.played_at).getTime() / 1000),  // Game played time (seconds)
         }))
@@ -419,10 +410,54 @@ async function getOnlineUsers(req, res) {
     }
 }
 
-// User status values for umarker
-const USER_STATUS_IDLE = 0
-const USER_STATUS_SETUP = 1
-const USER_STATUS_PLAYING = 2
+
+/**
+ * Checks if someone is waiting to play with a specific user (personal game invitation).
+ * Returns the waiting session info if found, or null if no pending invitation.
+ *
+ * @param {number} userId - The user ID to check for pending invitations
+ * @param {number} gameVariant - Game variant to filter by
+ * @returns {Promise<Object|null>} Session and inviter info, or null if none found
+ */
+async function findPendingInvitation(userId, gameVariant) {
+    try {
+        const [rows] = await pool.execute(
+            `SELECT gs.id as session_id, gs.user_one_id,
+                    u.id, u.name, u.uuid, u.face, u.rank, u.stars, u.games, u.gameswon, u.lang
+             FROM game_sessions gs
+             JOIN users u ON u.id = gs.user_one_id
+             WHERE gs.target_rival_id = ?
+               AND gs.game_variant = ?
+               AND gs.status = 0
+               AND gs.user_two_id IS NULL
+               AND gs.updated_at > DATE_SUB(NOW(3), INTERVAL 2 MINUTE)
+             ORDER BY gs.created_at ASC
+             LIMIT 1`,
+            [userId, gameVariant]
+        )
+
+        if (rows.length === 0) return null
+
+        const row = rows[0]
+        return {
+            sessionId: row.session_id,
+            inviter: {
+                id: row.id,
+                name: row.name,
+                uuid: row.uuid,
+                face: row.face,
+                rank: row.rank,
+                stars: row.stars,
+                games: row.games,
+                gameswon: row.gameswon,
+                lang: row.lang,
+            },
+        }
+    } catch (error) {
+        logger.error({}, "findPendingInvitation error:", error.message)
+        return null
+    }
+}
 
 /**
  * Finds user by uuuid (generated UUID from UserIdentity) and name.
@@ -564,8 +599,8 @@ async function findUserBySession(sessionId) {
  */
 async function userMarker(req, res) {
     const { sid, tp, u, v, pur } = req.body
-    const gameVariant = req.body.var
-    const ctx = { reqId: req.requestId, tp, pur: !!pur }
+    const gameVariant = req.body.var || 1
+    const ctx = { reqId: req.requestId, tp, pur: !!pur, var: gameVariant }
 
     logger.debug(ctx, "User marker request")
 
@@ -596,11 +631,46 @@ async function userMarker(req, res) {
 
     try {
         // Determine new status based on tp field
-        const newStatus = tp === "edit" ? USER_STATUS_SETUP : USER_STATUS_IDLE
+        const newStatus = tp === "edit" ? USER_STATUS.SETUP : USER_STATUS.IDLE
 
         // Update user status and last seen
         await updateUserStatus(user.id, newStatus, v)
         logger.debug({ ...ctx, status: newStatus }, "User status updated")
+
+        // Check for pending personal game invitations
+        // Only check if user is not already in a session (no sid provided)
+        if (!sid && !user.isbanned) {
+            const invitation = await findPendingInvitation(user.id, gameVariant)
+            if (invitation) {
+                logger.info(
+                    { ...ctx, inviterId: invitation.inviter.id, inviterSid: invitation.sessionId },
+                    `Found pending invitation from ${invitation.inviter.name}`
+                )
+
+                // Return uask response with invitation details
+                return res.json({
+                    type: "uask",
+                    usid: invitation.sessionId.toString(),
+                    u: {
+                        nam: invitation.inviter.name,
+                        i: invitation.inviter.id,
+                        id: invitation.inviter.uuid || "",
+                        rk: invitation.inviter.rank || 0,
+                        st: invitation.inviter.stars || 0,
+                        pld: invitation.inviter.games || 0,
+                        won: invitation.inviter.gameswon || 0,
+                        fc: invitation.inviter.face || 0,
+                        l: invitation.inviter.lang || "en",
+                    },
+                    msg: {
+                        type: "msg",
+                        m: MSG.PERSONAL_RIVAL_REQUEST,
+                        p: [invitation.inviter.name],
+                        c: true, // needConfirm = true
+                    },
+                })
+            }
+        }
 
         // If session ID provided, also update session heartbeat
         if (sid) {
@@ -662,6 +732,115 @@ async function userMarker(req, res) {
     }
 }
 
+/**
+ * User answer endpoint - responds to a battle invitation.
+ * Called when a player accepts or rejects a personal rival game invitation.
+ *
+ * Client sends: { type: "uanswer", u, ans, usid, var }
+ * - u: current user PlayerInfo (player responding to invitation)
+ * - ans: boolean - true if accepted, false if rejected
+ * - usid: session ID of the player who sent the invitation
+ * - var: game variant
+ *
+ * Response: { type: "uok" } or banned message if user is banned
+ *
+ * @param {Object} req - Express request
+ * @param {Object} res - Express response
+ * @returns {Promise<Object>} JSON response
+ */
+async function userAnswer(req, res) {
+    const { u, ans, usid } = req.body
+    const ctx = { reqId: req.requestId, usid, ans }
+
+    logger.info(ctx, `Battle invitation ${ans ? "accepted" : "rejected"}`)
+
+    if (!u || usid === undefined) {
+        logger.warn(ctx, "User answer missing parameters")
+        return res.json({ type: "error", reason: "Missing parameters" })
+    }
+
+    // Find the user responding to the invitation
+    const user = await findUserFromRequest(req.body)
+    if (!user) {
+        logger.warn(ctx, "User answer - user not found")
+        return res.json({ type: "error", reason: "User not found" })
+    }
+
+    ctx.uid = user.id
+
+    // Check if user is banned
+    if (user.isbanned) {
+        logger.warn(ctx, "User is banned, refusing answer")
+        return res.json({
+            type: "banned",
+            msg: {
+                type: "msg",
+                m: 9, // MSG_USER_BANNED
+                p: [],
+                c: true, // needConfirm = true
+            },
+            errcode: 1,
+        })
+    }
+
+    try {
+        // Convert usid to BigInt for session operations
+        const inviterSessionId = BigInt(usid)
+
+        // Verify the session exists and is waiting
+        const baseSessionId = inviterSessionId & ~1n
+        const [sessions] = await pool.execute(
+            "SELECT id, status, user_one_id FROM game_sessions WHERE id = ?",
+            [baseSessionId.toString()]
+        )
+
+        if (sessions.length === 0) {
+            logger.warn(ctx, "Invitation session not found")
+            return res.json({ type: "uok" }) // Still return ok, invitation may have expired
+        }
+
+        const session = sessions[0]
+
+        // Build the info message to send to the inviter
+        // Format: { type: "msg", m: <msgId>, p: [<params>], c: <needConfirm> }
+        const msgId = ans ? MSG.PERSONAL_RIVAL_ACCEPTED : MSG.PERSONAL_RIVAL_REJECTED
+        const infoMessage = {
+            type: "msg",
+            m: msgId,
+            p: [user.name], // Include responder's name as parameter
+            c: false,
+        }
+
+        // Serialize user info for the message
+        const userInfo = {
+            nam: user.name,
+            i: user.id,
+            rk: user.rank || 0,
+            fc: user.face || 0,
+            id: user.uuid || "",
+        }
+
+        // Send notification to the inviter
+        await sendMessage(inviterSessionId, "info", {
+            msg: infoMessage,
+            u: userInfo,
+        })
+
+        logger.info(
+            { ...ctx, inviterSid: inviterSessionId.toString() },
+            `Sent ${ans ? "acceptance" : "rejection"} to inviter`
+        )
+
+        // If rejected, we could update the session status, but for now just notify
+        // The inviter will handle the rejection on their end
+
+        return res.json({ type: "uok" })
+    } catch (error) {
+        logger.error(ctx, "userAnswer error:", error.message)
+        return res.json({ type: "error", reason: "Server error" })
+    }
+}
+
 module.exports = {
     addRival,
     deleteRival,
@@ -670,10 +849,10 @@ module.exports = {
     getRecentOpponents,
     getOnlineUsers,
     userMarker,
+    userAnswer,
     // Exported for testing
     serializeRival,
     serializeSearchUser,
     searchUsersByName,
-    LIST_TYPE_FRIENDS,
-    LIST_TYPE_BLOCKED,
+    findPendingInvitation,
 }

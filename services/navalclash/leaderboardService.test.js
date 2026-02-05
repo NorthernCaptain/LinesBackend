@@ -45,8 +45,9 @@ const {
     serializeStarEntry,
     TOPSCORE_THRESHOLD,
     MIN_GAME_TIME_MS,
-    TOPSTARS_MIN_VERSION,
 } = require("./leaderboardService")
+
+const { VERSION } = require("./constants")
 
 describe("services/navalclash/leaderboardService", () => {
     beforeEach(() => {
@@ -495,8 +496,8 @@ describe("services/navalclash/leaderboardService", () => {
             expect(MIN_GAME_TIME_MS).toBe(30000)
         })
 
-        it("should export TOPSTARS_MIN_VERSION as 30", () => {
-            expect(TOPSTARS_MIN_VERSION).toBe(30)
+        it("VERSION.TOPSTARS_MIN should be 30", () => {
+            expect(VERSION.TOPSTARS_MIN).toBe(30)
         })
     })
 })

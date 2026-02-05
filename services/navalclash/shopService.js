@@ -7,16 +7,7 @@
 const { pool } = require("../../db/navalclash")
 const { logger } = require("../../utils/logger")
 const { val2mess } = require("./gameService")
-
-// Error codes for ibya response
-const BUY_ERROR = {
-    SUCCESS: 0,
-    WRONG_PRICE: 3,
-    DENIED: -1,
-}
-
-// Weapon index to name mapping
-const WEAPON_NAMES = ["mine", "dutch", "radar", "shuffle", "stealth", "cshield"]
+const { BUY_ERROR, WEAPON_NAMES } = require("./constants")
 
 /**
  * Serializes an inventory item for API response.

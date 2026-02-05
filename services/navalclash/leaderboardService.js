@@ -17,6 +17,7 @@ const {
     MIN_GAME_TIME_MS,
 } = require("../../db/navalclash")
 const { logger } = require("../../utils/logger")
+const { VERSION } = require("./constants")
 
 /**
  * Serializes a score entry for API response.
@@ -95,9 +96,6 @@ function serializeStarEntry(row) {
         // No 'o' field - topstars entries don't have opponents
     }
 }
-
-// Minimum client version to include topstars in response
-const TOPSTARS_MIN_VERSION = 30
 
 // Map client game type to database game type
 // Client: 0=Android, 1=Bluetooth, 2=Web, 3=PassPlay
@@ -336,7 +334,7 @@ async function getTopScores(req, res) {
         }
 
         // Include topstars for clients with version > 30
-        if (clientVersion > TOPSTARS_MIN_VERSION) {
+        if (clientVersion > VERSION.TOPSTARS_MIN) {
             const starRows = await dbGetTopStars(gameVariant, maxResults)
             const starScores = starRows.map((row) => serializeStarEntry(row))
 
@@ -433,8 +431,7 @@ module.exports = {
     // Exported for testing
     serializeScore,
     serializeStarEntry,
-    // Re-export constants
+    // Re-export constants from db layer
     TOPSCORE_THRESHOLD,
     MIN_GAME_TIME_MS,
-    TOPSTARS_MIN_VERSION,
 }

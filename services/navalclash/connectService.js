@@ -6,10 +6,8 @@
 
 const { pool, dbUpdateLocalStats } = require("../../db/navalclash")
 const { logger } = require("../../utils/logger")
-
-// AI agent version range (2100-2200)
-const AGENT_VERSION_MIN = 2100
-const AGENT_VERSION_MAX = 2200
+const { getMinVersion, isMaintenanceMode } = require("./setupService")
+const { MSG, SESSION_STATUS, VERSION } = require("./constants")
 
 /**
  * Checks if a version indicates an AI agent.
@@ -18,7 +16,7 @@ const AGENT_VERSION_MAX = 2200
  * @returns {boolean} True if version is in the agent range
  */
 function isAgentVersion(version) {
-    return version >= AGENT_VERSION_MIN && version <= AGENT_VERSION_MAX
+    return version >= VERSION.AGENT_MIN && version <= VERSION.AGENT_MAX
 }
 
 /**
@@ -351,23 +349,26 @@ async function joinExistingSession(conn, session, userId, version) {
  * @param {number} userId - User ID
  * @param {number} version - App version
  * @param {number} gameVariant - Game variant
+ * @param {number|null} targetRivalId - Target rival user ID for personal games (null for random)
  * @returns {Promise<BigInt>} New session ID (even)
  */
-async function createNewSession(conn, userId, version, gameVariant) {
+async function createNewSession(conn, userId, version, gameVariant, targetRivalId = null) {
     const sessionId = generateSessionId()
     const sessionIdStr = sessionId.toString()
 
+    const isPersonal = targetRivalId !== null
     logger.info(
-        { sid: sessionIdStr, uid: userId, variant: gameVariant },
-        "Creating new waiting session as player 0"
+        { sid: sessionIdStr, uid: userId, variant: gameVariant, targetRivalId, isPersonal },
+        `Creating new ${isPersonal ? "personal" : "random"} waiting session as player 0`
     )
 
     // Use query() for BigInt - prepared statements can have issues with large integers
+    // game_type: 0 = random, 1 = personal
     await conn.query(
         `INSERT INTO game_sessions
-            (id, user_one_id, user_one_connected_at, version_one, game_variant, status)
-         VALUES (?, ?, NOW(3), ?, ?, 0)`,
-        [sessionIdStr, userId, version, gameVariant]
+            (id, user_one_id, user_one_connected_at, version_one, game_variant, game_type, target_rival_id, status)
+         VALUES (?, ?, NOW(3), ?, ?, ?, ?, 0)`,
+        [sessionIdStr, userId, version, gameVariant, isPersonal ? 1 : 0, targetRivalId]
     )
 
     return sessionId
@@ -447,7 +448,7 @@ async function findOrCreateSession(conn, user, body) {
                    AND (gs.version_one < ? OR gs.version_one > ?)
                  ORDER BY gs.created_at ASC
                  LIMIT 1`,
-                [user.id, gameVariant, AGENT_VERSION_MIN, AGENT_VERSION_MAX]
+                [user.id, gameVariant, VERSION.AGENT_MIN, VERSION.AGENT_MAX]
             )
         } else {
             // Human joining - can match with anyone
@@ -482,34 +483,18 @@ async function findOrCreateSession(conn, user, body) {
         logger.debug(ctx, "No waiting sessions found")
     }
 
+    // For personal games, extract the target rival's user ID
+    const targetRivalId = hasRival ? body.rival.id : null
+
     const sessionId = await createNewSession(
         conn,
         user.id,
         version,
-        gameVariant
+        gameVariant,
+        targetRivalId
     )
     return { sessionId, isNewSession: true }
 }
-
-/**
- * Gets configuration value from database.
- *
- * @param {Object} conn - Database connection
- * @param {string} name - Config name
- * @returns {Promise<Object|null>} Config object or null
- */
-async function getConfig(conn, name) {
-    const [rows] = await conn.execute(
-        "SELECT * FROM gamesetup WHERE name = ?",
-        [name]
-    )
-    return rows[0] || null
-}
-
-/**
- * Session finish status code for duplicate connection.
- */
-const SESSION_STATUS_TERMINATED_DUPLICATE = 7
 
 /**
  * Terminates all active sessions for a user (when they reconnect).
@@ -526,7 +511,7 @@ async function terminateUserSessions(conn, userId) {
             finished_at = NOW(3)
          WHERE (user_one_id = ? OR user_two_id = ?)
            AND status <= 1`,
-        [SESSION_STATUS_TERMINATED_DUPLICATE, userId, userId]
+        [SESSION_STATUS.FINISHED_TERMINATED_DUPLICATE, userId, userId]
     )
 
     if (result.affectedRows > 0) {
@@ -584,11 +569,44 @@ async function connect(req, res) {
         if (user.isbanned) {
             logger.warn(ctx, "User is banned, refusing connection")
             await conn.commit()
-            return res.json({ type: "banned", reason: "User is banned" })
+            // Return banned response with InfoMessage format expected by client
+            // MSG_USER_BANNED = 9
+            return res.json({
+                type: "banned",
+                msg: {
+                    type: "msg",
+                    m: 9, // MSG_USER_BANNED
+                    p: [], // No parameters
+                    c: false, // needConfirm = false
+                },
+                errcode: 1,
+            })
         }
 
-        const maintenance = await getConfig(conn, "maintenance_mode")
-        if (maintenance && maintenance.int_value) {
+        // Check client version against minimum required version
+        const clientVersion = body.v || 0
+        const minVersion = await getMinVersion()
+        if (minVersion > 0 && clientVersion < minVersion) {
+            logger.warn(
+                { ...ctx, clientVersion, minVersion },
+                "Client version too old, refusing connection"
+            )
+            await conn.commit()
+            return res.json({
+                type: "refused",
+                msg: {
+                    type: "msg",
+                    m: MSG.OLD_FORBIDDEN_VERSION,
+                    p: [], // No parameters
+                    c: true, // needConfirm = true (triggers app store redirect)
+                },
+                errcode: 1,
+                reason: "Version too old",
+            })
+        }
+
+        // Check maintenance mode (cached for 1 hour)
+        if (await isMaintenanceMode()) {
             logger.info(ctx, "Server in maintenance mode, refusing connection")
             await conn.commit()
             return res.json({

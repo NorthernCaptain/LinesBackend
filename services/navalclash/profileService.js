@@ -10,10 +10,10 @@ const {
     dbFindUserByUuid,
     dbFindUserByNameAndPin,
     dbCreateUser,
-    dbUpdateUserProfile,
     dbSyncUserProfile,
-    dbUpdateLocalStats,
+    dbUpdateProfileAndStats,
     dbLogProfileAction,
+    dbGetUserWeaponArrays,
 } = require("../../db/navalclash")
 const { logger } = require("../../utils/logger")
 
@@ -48,11 +48,15 @@ async function generateUniquePin(conn, name) {
  * Format matches the client's PlayerInfo serialization.
  *
  * @param {Object} user - User object from database
+ * @param {{we: number[], wu: number[]}} weapons - Weapon inventory arrays
  * @returns {Object} Serialized user data for client
  */
-function serializeUserForExport(user) {
+function serializeUserForExport(user, weapons) {
     return {
         nam: user.name,
+        dev: "",
+        id: user.uuid || "",
+        ut: 2,
         i: user.id,
         pin: user.pin,
         rk: user.rank || 0,
@@ -62,7 +66,7 @@ function serializeUserForExport(user) {
         fc: user.face || 0,
         an: user.coins || 0,
         l: user.lang || "en",
-        tz: user.tz || 0,
+        tz: user.timezone || 0,
         ga: [
             user.games_android || 0,
             user.games_bluetooth || 0,
@@ -75,12 +79,120 @@ function serializeUserForExport(user) {
             user.wins_web || 0,
             user.wins_passplay || 0,
         ],
+        we: weapons.we,
+        wu: weapons.wu,
+    }
+}
+
+/**
+ * Merges client profile updates into a user object in-place.
+ * Avoids a re-SELECT after UPDATE by applying known changes locally.
+ *
+ * @param {Object} user - User object from database
+ * @param {Object} clientUser - Client's PlayerInfo object
+ */
+function mergeProfileUpdates(user, clientUser) {
+    if (clientUser.fc != null) user.face = clientUser.fc
+    if (clientUser.l != null) user.lang = clientUser.l
+    if (clientUser.tz != null) user.timezone = clientUser.tz
+    if (clientUser.rk != null) user.rank = clientUser.rk
+    if (clientUser.st != null) user.stars = clientUser.st
+
+    if (Array.isArray(clientUser.ga) && Array.isArray(clientUser.wa)) {
+        user.games_android = clientUser.ga[0] || 0
+        user.games_bluetooth = clientUser.ga[1] || 0
+        user.games_passplay = clientUser.ga[3] || 0
+        user.wins_android = clientUser.wa[0] || 0
+        user.wins_bluetooth = clientUser.wa[1] || 0
+        user.wins_passplay = clientUser.wa[3] || 0
+        user.games =
+            user.games_android +
+            user.games_bluetooth +
+            (user.games_web || 0) +
+            user.games_passplay
+        user.gameswon =
+            user.wins_android +
+            user.wins_bluetooth +
+            (user.wins_web || 0) +
+            user.wins_passplay
+    }
+}
+
+/**
+ * Creates a new user for export with PIN, inside a transaction.
+ *
+ * @param {Object} clientUser - Client's PlayerInfo object
+ * @param {number} version - Client version
+ * @returns {Promise<Object>} Created user object
+ */
+async function createExportUser(clientUser, version) {
+    const conn = await pool.getConnection()
+    try {
+        await conn.beginTransaction()
+
+        const pin = await generateUniquePin(conn, clientUser.nam)
+        const [result] = await conn.execute(
+            `INSERT INTO users (name, uuid, pin, face, lang, timezone,
+                \`rank\`, stars, coins, version)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+            [
+                clientUser.nam,
+                clientUser.id || "",
+                pin,
+                clientUser.fc || 0,
+                clientUser.l || "en",
+                clientUser.tz || 0,
+                clientUser.rk || 0,
+                clientUser.st || 0,
+                version || 0,
+            ]
+        )
+
+        const [rows] = await conn.execute(
+            "SELECT * FROM users WHERE id = ?",
+            [result.insertId]
+        )
+        await conn.commit()
+        return rows[0]
+    } catch (error) {
+        await conn.rollback()
+        throw error
+    } finally {
+        conn.release()
+    }
+}
+
+/**
+ * Generates and saves a PIN for an existing user, inside a transaction.
+ *
+ * @param {Object} user - User object from database
+ * @returns {Promise<number>} Generated PIN
+ */
+async function generateAndSavePin(user) {
+    const conn = await pool.getConnection()
+    try {
+        await conn.beginTransaction()
+        const pin = await generateUniquePin(conn, user.name)
+        await conn.execute("UPDATE users SET pin = ? WHERE id = ?", [
+            pin,
+            user.id,
+        ])
+        await conn.commit()
+        return pin
+    } catch (error) {
+        await conn.rollback()
+        throw error
+    } finally {
+        conn.release()
     }
 }
 
 /**
  * Export profile endpoint handler.
  * Saves player data to server and returns a PIN for later recovery.
+ *
+ * Fast path (existing user with PIN): 2 DB queries, no transaction.
+ * Slow path (new user or missing PIN): uses transaction for atomicity.
  *
  * @param {Object} req - Express request
  * @param {Object} res - Express response
@@ -101,75 +213,37 @@ async function exportProfile(req, res) {
     ctx.name = clientUser.nam
     ctx.clientUid = clientUser.id
 
-    const conn = await pool.getConnection()
     try {
-        await conn.beginTransaction()
-
-        // Find user by UUID + name (from client's id field which is device UUID)
         let user = await dbFindUserByUuidAndName(clientUser.id, clientUser.nam)
 
         if (!user) {
-            // User not found - try to find by name only and create if needed
+            // New user - needs transaction for PIN + INSERT
             logger.info(ctx, "User not found by UUID, creating new profile")
-
-            const pin = await generateUniquePin(conn, clientUser.nam)
-            const [result] = await conn.execute(
-                `INSERT INTO users (name, uuid, pin, face, lang, tz, coins, version)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    clientUser.nam,
-                    clientUser.id || "",
-                    pin,
-                    clientUser.fc || 0,
-                    clientUser.l || "en",
-                    clientUser.tz || 0,
-                    clientUser.an || 0,
-                    body.v || 0,
-                ]
-            )
-            const userId = result.insertId
-
-            const [rows] = await conn.execute(
-                "SELECT * FROM users WHERE id = ?",
-                [userId]
-            )
-            user = rows[0]
-            ctx.uid = userId
-            logger.info({ ...ctx, pin }, "New user created for export")
+            user = await createExportUser(clientUser, body.v)
+            ctx.uid = user.id
+            logger.info({ ...ctx, pin: user.pin }, "New user created for export")
         } else {
             ctx.uid = user.id
 
-            // Generate PIN if user doesn't have one
+            // Generate PIN if missing (rare - needs transaction)
             if (!user.pin) {
-                const pin = await generateUniquePin(conn, user.name)
-                await conn.execute("UPDATE users SET pin = ? WHERE id = ?", [
-                    pin,
-                    user.id,
-                ])
-                user.pin = pin
-                logger.info({ ...ctx, pin }, "Generated new PIN for existing user")
+                user.pin = await generateAndSavePin(user)
+                logger.info(
+                    { ...ctx, pin: user.pin },
+                    "Generated new PIN for existing user"
+                )
             }
 
-            // Update profile data from client
-            await dbUpdateUserProfile(conn, user.id, clientUser)
-
-            // Update local game stats
-            if (clientUser.ga && clientUser.wa) {
-                await dbUpdateLocalStats(conn, user.id, clientUser)
-            }
-
-            // Refresh user data
-            const [rows] = await conn.execute(
-                "SELECT * FROM users WHERE id = ?",
-                [user.id]
-            )
-            user = rows[0]
+            // Fast path: single UPDATE, no transaction needed
+            await dbUpdateProfileAndStats(pool, user.id, clientUser)
+            mergeProfileUpdates(user, clientUser)
             logger.info(ctx, "Updated existing user profile")
         }
 
-        await conn.commit()
+        // Fetch weapon inventory for response
+        const weapons = await dbGetUserWeaponArrays(user.id)
 
-        // Log the export action
+        // Log export action (fire and forget)
         dbLogProfileAction(
             user.id,
             "export",
@@ -182,14 +256,11 @@ async function exportProfile(req, res) {
             type: "uexpres",
             id: user.id,
             pin: user.pin,
-            u: serializeUserForExport(user),
+            u: serializeUserForExport(user, weapons),
         })
     } catch (error) {
-        await conn.rollback()
         logger.error(ctx, "Export failed:", error.message)
         return res.json({ type: "error", reason: "Server error" })
-    } finally {
-        conn.release()
     }
 }
 
@@ -230,6 +301,9 @@ async function importProfile(req, res) {
             return res.json({ type: "uimpres" })
         }
 
+        // Fetch weapon inventory for response
+        const weapons = await dbGetUserWeaponArrays(user.id)
+
         // Log the import action
         dbLogProfileAction(user.id, "import", `v=${body.v || 0}`)
 
@@ -237,7 +311,7 @@ async function importProfile(req, res) {
 
         return res.json({
             type: "uimpres",
-            u: serializeUserForExport(user),
+            u: serializeUserForExport(user, weapons),
         })
     } catch (error) {
         logger.error(ctx, "Import failed:", error.message)

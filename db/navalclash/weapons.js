@@ -194,6 +194,38 @@ async function dbGetSessionUserId(sessionId, player) {
     }
 }
 
+/**
+ * Gets user's weapon inventory as arrays for client serialization.
+ * Returns weapon quantities and usage counts indexed by weapon type.
+ * Indices: 0=mine, 1=dutch, 2=radar, 3=shuffle, 4=stealth, 5=cshield
+ *
+ * @param {number} userId - User ID
+ * @returns {Promise<{we: number[], wu: number[]}>} Weapon arrays
+ */
+async function dbGetUserWeaponArrays(userId) {
+    const we = [0, 0, 0, 0, 0, 0]
+    const wu = [0, 0, 0, 0, 0, 0]
+
+    try {
+        const [rows] = await pool.execute(
+            `SELECT item_id, quantity, times_used FROM user_inventory
+             WHERE user_id = ? AND item_type = 'weapon'`,
+            [userId]
+        )
+        for (const row of rows) {
+            const idx = parseInt(row.item_id, 10)
+            if (idx >= 0 && idx < 6) {
+                we[idx] = row.quantity || 0
+                wu[idx] = row.times_used || 0
+            }
+        }
+    } catch (error) {
+        console.error("dbGetUserWeaponArrays error:", error)
+    }
+
+    return { we, wu }
+}
+
 module.exports = {
     dbGetUserWeaponInventory,
     dbGetTrackedWeapons,
@@ -202,4 +234,5 @@ module.exports = {
     dbIncrementWeaponUsage,
     dbConsumeWeapons,
     dbGetSessionUserId,
+    dbGetUserWeaponArrays,
 }

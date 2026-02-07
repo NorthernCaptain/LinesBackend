@@ -13,9 +13,9 @@ const { pool } = require("./pool")
  * @param {string} name - Player name
  * @returns {Promise<Object|null>} User object or null if not found
  */
-async function dbFindUserByUuidAndName(uuid, name) {
+async function dbFindUserByUuidAndName(uuid, name, db) {
     try {
-        const [rows] = await pool.execute(
+        const [rows] = await (db || pool).execute(
             "SELECT * FROM users WHERE uuid = ? AND name = ?",
             [uuid, name]
         )
@@ -196,7 +196,7 @@ async function dbUpdateUserProfile(conn, userId, userData) {
             `UPDATE users SET
                 face = COALESCE(?, face),
                 lang = COALESCE(?, lang),
-                tz = COALESCE(?, tz),
+                timezone = COALESCE(?, timezone),
                 coins = COALESCE(?, coins),
                 updated_at = NOW()
              WHERE id = ?`,
@@ -236,7 +236,7 @@ async function dbSyncUserProfile(userId, clientUser, version) {
             `UPDATE users SET
                 face = COALESCE(?, face),
                 lang = COALESCE(?, lang),
-                tz = COALESCE(?, tz),
+                timezone = COALESCE(?, timezone),
                 version = ?,
                 updated_at = NOW()
              WHERE id = ?`,
@@ -409,6 +409,95 @@ async function dbUpdateLocalStats(conn, userId, clientUser) {
     }
 }
 
+/**
+ * Updates user profile fields and local game stats in a single query.
+ * Combines profile update (face, lang, timezone, rank, stars) with
+ * local stats update (android, bluetooth, passplay games/wins).
+ * Coins are server-authoritative and never updated from client data.
+ *
+ * @param {Object} db - Database connection or pool
+ * @param {number} userId - User ID
+ * @param {Object} userData - Client's PlayerInfo object
+ * @returns {Promise<boolean>} True if updated successfully
+ */
+async function dbUpdateProfileAndStats(db, userId, userData) {
+    const hasStats =
+        Array.isArray(userData.ga) && Array.isArray(userData.wa)
+
+    try {
+        if (hasStats) {
+            const gamesAndroid = userData.ga[0] || 0
+            const gamesBluetooth = userData.ga[1] || 0
+            const gamesPassplay = userData.ga[3] || 0
+            const winsAndroid = userData.wa[0] || 0
+            const winsBluetooth = userData.wa[1] || 0
+            const winsPassplay = userData.wa[3] || 0
+
+            await db.execute(
+                `UPDATE users SET
+                    face = COALESCE(?, face),
+                    lang = COALESCE(?, lang),
+                    timezone = COALESCE(?, timezone),
+                    \`rank\` = COALESCE(?, \`rank\`),
+                    stars = COALESCE(?, stars),
+                    games_android = ?,
+                    games_bluetooth = ?,
+                    games_passplay = ?,
+                    wins_android = ?,
+                    wins_bluetooth = ?,
+                    wins_passplay = ?,
+                    games = ? + ? + games_web + ?,
+                    gameswon = ? + ? + wins_web + ?,
+                    updated_at = NOW()
+                 WHERE id = ?`,
+                [
+                    userData.fc ?? null,
+                    userData.l ?? null,
+                    userData.tz ?? null,
+                    userData.rk ?? null,
+                    userData.st ?? null,
+                    gamesAndroid,
+                    gamesBluetooth,
+                    gamesPassplay,
+                    winsAndroid,
+                    winsBluetooth,
+                    winsPassplay,
+                    gamesAndroid,
+                    gamesBluetooth,
+                    gamesPassplay,
+                    winsAndroid,
+                    winsBluetooth,
+                    winsPassplay,
+                    userId,
+                ]
+            )
+        } else {
+            await db.execute(
+                `UPDATE users SET
+                    face = COALESCE(?, face),
+                    lang = COALESCE(?, lang),
+                    timezone = COALESCE(?, timezone),
+                    \`rank\` = COALESCE(?, \`rank\`),
+                    stars = COALESCE(?, stars),
+                    updated_at = NOW()
+                 WHERE id = ?`,
+                [
+                    userData.fc ?? null,
+                    userData.l ?? null,
+                    userData.tz ?? null,
+                    userData.rk ?? null,
+                    userData.st ?? null,
+                    userId,
+                ]
+            )
+        }
+        return true
+    } catch (error) {
+        console.error("dbUpdateProfileAndStats error:", error)
+        return false
+    }
+}
+
 module.exports = {
     dbFindUserByUuidAndName,
     dbFindUserById,
@@ -423,4 +512,5 @@ module.exports = {
     dbLogProfileAction,
     dbUpdateUserLastDevice,
     dbUpdateLocalStats,
+    dbUpdateProfileAndStats,
 }

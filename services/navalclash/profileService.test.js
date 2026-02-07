@@ -18,10 +18,10 @@ jest.mock("../../db/navalclash", () => {
         dbFindUserByUuid: jest.fn(),
         dbFindUserByNameAndPin: jest.fn(),
         dbCreateUser: jest.fn(),
-        dbUpdateUserProfile: jest.fn(),
         dbSyncUserProfile: jest.fn(),
-        dbUpdateLocalStats: jest.fn(),
+        dbUpdateProfileAndStats: jest.fn(),
         dbLogProfileAction: jest.fn(),
+        dbGetUserWeaponArrays: jest.fn(),
     }
 })
 
@@ -41,10 +41,10 @@ const {
     dbFindUserByUuid,
     dbFindUserByNameAndPin,
     dbCreateUser,
-    dbUpdateUserProfile,
     dbSyncUserProfile,
-    dbUpdateLocalStats,
+    dbUpdateProfileAndStats,
     dbLogProfileAction,
+    dbGetUserWeaponArrays,
 } = require("../../db/navalclash")
 
 describe("profileService", () => {
@@ -65,6 +65,11 @@ describe("profileService", () => {
         mockRes = {
             json: jest.fn(),
         }
+
+        dbGetUserWeaponArrays.mockResolvedValue({
+            we: [0, 0, 0, 0, 0, 0],
+            wu: [0, 0, 0, 0, 0, 0],
+        })
     })
 
     describe("exportProfile", () => {
@@ -94,6 +99,7 @@ describe("profileService", () => {
             const existingUser = {
                 id: 42,
                 name: "TestPlayer",
+                uuid: "uuid123",
                 pin: 1234,
                 rank: 5,
                 stars: 1000,
@@ -102,7 +108,7 @@ describe("profileService", () => {
                 face: 2,
                 coins: 500,
                 lang: "en",
-                tz: -300,
+                timezone: -300,
                 games_android: 10,
                 games_bluetooth: 5,
                 games_web: 30,
@@ -127,14 +133,17 @@ describe("profileService", () => {
             }
 
             dbFindUserByUuidAndName.mockResolvedValue(existingUser)
-            dbUpdateUserProfile.mockResolvedValue(true)
-            dbUpdateLocalStats.mockResolvedValue(true)
-            mockConn.execute.mockResolvedValue([[existingUser]])
+            dbUpdateProfileAndStats.mockResolvedValue(true)
 
             await exportProfile(mockReq, mockRes)
 
-            expect(mockConn.beginTransaction).toHaveBeenCalled()
-            expect(mockConn.commit).toHaveBeenCalled()
+            // Fast path: no transaction needed
+            expect(mockConn.beginTransaction).not.toHaveBeenCalled()
+            expect(dbUpdateProfileAndStats).toHaveBeenCalledWith(
+                pool,
+                42,
+                mockReq.body.u
+            )
             expect(mockRes.json).toHaveBeenCalledWith(
                 expect.objectContaining({
                     type: "uexpres",
@@ -161,7 +170,7 @@ describe("profileService", () => {
                 face: 1,
                 coins: 100,
                 lang: "en",
-                tz: 0,
+                timezone: 0,
             }
 
             mockReq = {
@@ -201,7 +210,6 @@ describe("profileService", () => {
                 rank: 1,
                 stars: 100,
             }
-            const userWithPin = { ...userWithoutPin, pin: 9999 }
 
             mockReq = {
                 body: {
@@ -214,14 +222,16 @@ describe("profileService", () => {
             }
 
             dbFindUserByUuidAndName.mockResolvedValue(userWithoutPin)
-            dbUpdateUserProfile.mockResolvedValue(true)
+            dbUpdateProfileAndStats.mockResolvedValue(true)
             mockConn.execute
                 .mockResolvedValueOnce([[]])  // PIN uniqueness check
                 .mockResolvedValueOnce([{}])  // UPDATE PIN
-                .mockResolvedValueOnce([[userWithPin]])  // SELECT after update
 
             await exportProfile(mockReq, mockRes)
 
+            // Transaction used only for PIN generation
+            expect(mockConn.beginTransaction).toHaveBeenCalled()
+            expect(mockConn.commit).toHaveBeenCalled()
             expect(mockRes.json).toHaveBeenCalledWith(
                 expect.objectContaining({
                     type: "uexpres",
@@ -230,7 +240,7 @@ describe("profileService", () => {
             )
         })
 
-        it("should rollback on error", async () => {
+        it("should return error on DB failure", async () => {
             mockReq = {
                 body: {
                     u: {
@@ -241,6 +251,27 @@ describe("profileService", () => {
             }
 
             dbFindUserByUuidAndName.mockRejectedValue(new Error("DB error"))
+
+            await exportProfile(mockReq, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "error",
+                reason: "Server error",
+            })
+        })
+
+        it("should rollback on error during new user creation", async () => {
+            mockReq = {
+                body: {
+                    u: {
+                        nam: "ErrorPlayer",
+                        id: "uuid-error",
+                    },
+                },
+            }
+
+            dbFindUserByUuidAndName.mockResolvedValue(null)
+            mockConn.execute.mockRejectedValue(new Error("INSERT failed"))
 
             await exportProfile(mockReq, mockRes)
 
@@ -281,6 +312,7 @@ describe("profileService", () => {
             const user = {
                 id: 42,
                 name: "TestPlayer",
+                uuid: "uuid-test-42",
                 pin: 1234,
                 rank: 5,
                 stars: 1000,
@@ -289,7 +321,7 @@ describe("profileService", () => {
                 face: 2,
                 coins: 500,
                 lang: "en",
-                tz: -300,
+                timezone: -300,
                 isbanned: 0,
                 games_android: 10,
                 games_bluetooth: 5,
@@ -311,6 +343,9 @@ describe("profileService", () => {
                 type: "uimpres",
                 u: expect.objectContaining({
                     nam: "TestPlayer",
+                    dev: "",
+                    id: "uuid-test-42",
+                    ut: 2,
                     i: 42,
                     pin: 1234,
                     rk: 5,

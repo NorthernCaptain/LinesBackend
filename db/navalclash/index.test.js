@@ -89,5 +89,6 @@ describe("db/navalclash/index", () => {
         expect(db.dbIncrementWeaponUsage).toBeDefined()
         expect(db.dbConsumeWeapons).toBeDefined()
         expect(db.dbGetSessionUserId).toBeDefined()
+        expect(db.dbGetUserWeaponArrays).toBeDefined()
     })
 })

@@ -1163,6 +1163,7 @@ async function finish(req, res) {
         const isFirstFinish = updateResult.affectedRows > 0
         let winnerCoins = 0
         let loserCoins = 0
+        let pendingScore = null
 
         if (isFirstFinish) {
             // This request "won" the race - apply stats and coins
@@ -1222,29 +1223,19 @@ async function finish(req, res) {
                 ctx
             )
 
-            // Submit score to leaderboard if winner provided score data
-            // Score is only recorded if:
-            // - Player won
-            // - Score > threshold (3000)
-            // - Game time >= 30 seconds
-            // - Not a duplicate
+            // Capture score data for post-commit submission.
+            // submitScore() uses pool.execute() (separate connections),
+            // so calling it inside the transaction causes lock contention
+            // with the concurrent loser's finish request.
             if (won && sc && sc.score) {
-                const scoreResult = await submitScore(
+                pendingScore = {
                     winnerId,
                     loserId,
-                    sc.score,
-                    sc.time || 0,
-                    3, // game_type: 3 = web
-                    gameSession.game_variant || 1,
+                    score: sc.score,
+                    time: sc.time || 0,
+                    gameVariant: gameSession.game_variant || 1,
                     winnerRank,
                     loserRank,
-                    ctx
-                )
-                if (scoreResult.success) {
-                    logger.info(
-                        { ...ctx, scoreId: scoreResult.scoreId, score: sc.score },
-                        "Score recorded to leaderboard"
-                    )
                 }
             }
         } else {
@@ -1289,6 +1280,31 @@ async function finish(req, res) {
         )
 
         await conn.commit()
+
+        // Submit score after commit to avoid holding transaction locks
+        if (pendingScore) {
+            const scoreResult = await submitScore(
+                pendingScore.winnerId,
+                pendingScore.loserId,
+                pendingScore.score,
+                pendingScore.time,
+                3, // game_type: 3 = web
+                pendingScore.gameVariant,
+                pendingScore.winnerRank,
+                pendingScore.loserRank,
+                ctx
+            )
+            if (scoreResult.success) {
+                logger.info(
+                    {
+                        ...ctx,
+                        scoreId: scoreResult.scoreId,
+                        score: pendingScore.score,
+                    },
+                    "Score recorded to leaderboard"
+                )
+            }
+        }
 
         // Finalize training data after transaction commit (only for first finish)
         if (isFirstFinish) {

@@ -154,9 +154,7 @@ describe("services/navalclash/setupService", () => {
 
     describe("invalidateConfig", () => {
         it("should clear specific config from cache", async () => {
-            mockExecute.mockResolvedValue([
-                [{ name: "test", int_value: 1 }],
-            ])
+            mockExecute.mockResolvedValue([[{ name: "test", int_value: 1 }]])
 
             // Populate cache
             await getConfig("test")

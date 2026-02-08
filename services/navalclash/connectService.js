@@ -352,13 +352,25 @@ async function joinExistingSession(conn, session, userId, version) {
  * @param {number|null} targetRivalId - Target rival user ID for personal games (null for random)
  * @returns {Promise<BigInt>} New session ID (even)
  */
-async function createNewSession(conn, userId, version, gameVariant, targetRivalId = null) {
+async function createNewSession(
+    conn,
+    userId,
+    version,
+    gameVariant,
+    targetRivalId = null
+) {
     const sessionId = generateSessionId()
     const sessionIdStr = sessionId.toString()
 
     const isPersonal = targetRivalId !== null
     logger.info(
-        { sid: sessionIdStr, uid: userId, variant: gameVariant, targetRivalId, isPersonal },
+        {
+            sid: sessionIdStr,
+            uid: userId,
+            variant: gameVariant,
+            targetRivalId,
+            isPersonal,
+        },
         `Creating new ${isPersonal ? "personal" : "random"} waiting session as player 0`
     )
 
@@ -368,7 +380,14 @@ async function createNewSession(conn, userId, version, gameVariant, targetRivalI
         `INSERT INTO game_sessions
             (id, user_one_id, user_one_connected_at, version_one, game_variant, game_type, target_rival_id, status)
          VALUES (?, ?, NOW(3), ?, ?, ?, ?, 0)`,
-        [sessionIdStr, userId, version, gameVariant, isPersonal ? 1 : 0, targetRivalId]
+        [
+            sessionIdStr,
+            userId,
+            version,
+            gameVariant,
+            isPersonal ? 1 : 0,
+            targetRivalId,
+        ]
     )
 
     return sessionId

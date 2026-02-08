@@ -104,7 +104,7 @@ describe("services/navalclash/weaponService", () => {
 
             const counts = countWeaponsByType(weapons)
 
-            expect(counts).toEqual({ "0": 2, "1": 1 })
+            expect(counts).toEqual({ 0: 2, 1: 1 })
         })
 
         it("should return empty object for empty array", () => {
@@ -125,35 +125,27 @@ describe("services/navalclash/weaponService", () => {
 
             const counts = countWeaponsByType(weapons)
 
-            expect(counts).toEqual({ "0": 1, "2": 1 })
+            expect(counts).toEqual({ 0: 1, 2: 1 })
         })
     })
 
     describe("validateWeaponPlacement", () => {
         it("should return valid when inventory has enough weapons", async () => {
-            dbGetUserWeaponInventory.mockResolvedValue({ "0": 5, "1": 2 })
+            dbGetUserWeaponInventory.mockResolvedValue({ 0: 5, 1: 2 })
 
-            const weapons = [
-                { type: "wmn" },
-                { type: "wmn" },
-                { type: "dch" },
-            ]
+            const weapons = [{ type: "wmn" }, { type: "wmn" }, { type: "dch" }]
             const ctx = { reqId: "test" }
 
             const result = await validateWeaponPlacement(weapons, 1, ctx)
 
             expect(result.valid).toBe(true)
-            expect(result.counts).toEqual({ "0": 2, "1": 1 })
+            expect(result.counts).toEqual({ 0: 2, 1: 1 })
         })
 
         it("should return invalid when inventory insufficient", async () => {
-            dbGetUserWeaponInventory.mockResolvedValue({ "0": 1, "1": 0 })
+            dbGetUserWeaponInventory.mockResolvedValue({ 0: 1, 1: 0 })
 
-            const weapons = [
-                { type: "wmn" },
-                { type: "wmn" },
-                { type: "dch" },
-            ]
+            const weapons = [{ type: "wmn" }, { type: "wmn" }, { type: "dch" }]
             const ctx = { reqId: "test" }
 
             const result = await validateWeaponPlacement(weapons, 1, ctx)
@@ -194,16 +186,15 @@ describe("services/navalclash/weaponService", () => {
             const result = await trackWeaponPlacement(
                 1000n,
                 0,
-                { "0": 2, "1": 1 },
+                { 0: 2, 1: 1 },
                 ctx
             )
 
             expect(result).toBe(true)
-            expect(dbSetTrackedWeapons).toHaveBeenCalledWith(
-                1000n,
-                0,
-                { "0": 2, "1": 1 }
-            )
+            expect(dbSetTrackedWeapons).toHaveBeenCalledWith(1000n, 0, {
+                0: 2,
+                1: 1,
+            })
         })
 
         it("should return false on failure", async () => {
@@ -271,7 +262,7 @@ describe("services/navalclash/weaponService", () => {
 
         it("should consume loser weapons", async () => {
             dbGetSessionUserId.mockResolvedValue(10)
-            dbGetTrackedWeapons.mockResolvedValue({ "0": 2, "1": 1 })
+            dbGetTrackedWeapons.mockResolvedValue({ 0: 2, 1: 1 })
             dbConsumeWeapons.mockResolvedValue(true)
 
             const ctx = { reqId: "test" }
@@ -282,7 +273,7 @@ describe("services/navalclash/weaponService", () => {
             expect(dbGetTrackedWeapons).toHaveBeenCalledWith(1000n, 0)
             expect(dbConsumeWeapons).toHaveBeenCalledWith(
                 10,
-                { "0": 2, "1": 1 },
+                { 0: 2, 1: 1 },
                 mockConn
             )
         })
@@ -321,7 +312,7 @@ describe("services/navalclash/weaponService", () => {
 
         it("should return false if consumption fails", async () => {
             dbGetSessionUserId.mockResolvedValue(10)
-            dbGetTrackedWeapons.mockResolvedValue({ "0": 1 })
+            dbGetTrackedWeapons.mockResolvedValue({ 0: 1 })
             dbConsumeWeapons.mockResolvedValue(false)
 
             const ctx = { reqId: "test" }

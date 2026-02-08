@@ -61,7 +61,10 @@ async function getItemsList(req, res) {
              ORDER BY sort_order, weapon_index`
         )
 
-        logger.debug({ ...ctx, itemCount: items.length }, "Returning armory items")
+        logger.debug(
+            { ...ctx, itemCount: items.length },
+            "Returning armory items"
+        )
 
         // Format items for client response
         const formattedItems = items.map((item) => ({
@@ -118,7 +121,10 @@ async function getInventory(req, res) {
 
         const coins = users.length > 0 ? users[0].coins : 0
 
-        logger.debug({ ...ctx, itemCount: items.length, coins }, "Returning inventory")
+        logger.debug(
+            { ...ctx, itemCount: items.length, coins },
+            "Returning inventory"
+        )
         return res.json({
             type: "inventory",
             coins: coins,
@@ -222,7 +228,11 @@ async function internalBuy(req, res) {
     const { u, lg, tkn, its } = req.body
     const ctx = { reqId: req.requestId }
 
-    logger.debug(ctx, "Internal buy request", { lg, hasUser: !!u, itemCount: its?.length })
+    logger.debug(ctx, "Internal buy request", {
+        lg,
+        hasUser: !!u,
+        itemCount: its?.length,
+    })
 
     // Validate request
     if (!u || !u.id) {
@@ -274,7 +284,9 @@ async function internalBuy(req, res) {
         const [shopItems] = await conn.execute(
             "SELECT weapon_index, price FROM shop_items WHERE is_active = 1"
         )
-        const priceMap = new Map(shopItems.map((item) => [String(item.weapon_index), item.price]))
+        const priceMap = new Map(
+            shopItems.map((item) => [String(item.weapon_index), item.price])
+        )
 
         // Validate prices and calculate total cost
         let totalCost = 0
@@ -297,7 +309,10 @@ async function internalBuy(req, res) {
             // Validate price matches server
             if (p !== serverPrice) {
                 await conn.rollback()
-                logger.warn({ ...ctx, sku, clientPrice: p, serverPrice }, "Internal buy price mismatch")
+                logger.warn(
+                    { ...ctx, sku, clientPrice: p, serverPrice },
+                    "Internal buy price mismatch"
+                )
                 return res.json({
                     type: "ibya",
                     rc: BUY_ERROR.WRONG_PRICE,
@@ -314,7 +329,10 @@ async function internalBuy(req, res) {
         // Check if user has enough coins
         if (totalCost > user.coins) {
             await conn.rollback()
-            logger.warn({ ...ctx, totalCost, userCoins: user.coins }, "Internal buy insufficient coins")
+            logger.warn(
+                { ...ctx, totalCost, userCoins: user.coins },
+                "Internal buy insufficient coins"
+            )
             return res.json({
                 type: "ibya",
                 rc: BUY_ERROR.WRONG_PRICE,
@@ -324,7 +342,10 @@ async function internalBuy(req, res) {
 
         // Deduct coins
         const newCoins = user.coins - totalCost
-        await conn.execute("UPDATE users SET coins = ? WHERE id = ?", [newCoins, user.id])
+        await conn.execute("UPDATE users SET coins = ? WHERE id = ?", [
+            newCoins,
+            user.id,
+        ])
 
         // Update inventory for each item
         for (const item of validatedItems) {
@@ -370,7 +391,8 @@ async function internalBuy(req, res) {
 
         // Log each item purchased with name, qty, price
         const itemDetails = validatedItems.map((item) => {
-            const weaponName = WEAPON_NAMES[parseInt(item.sku, 10)] || `weapon_${item.sku}`
+            const weaponName =
+                WEAPON_NAMES[parseInt(item.sku, 10)] || `weapon_${item.sku}`
             const action = item.qty > 0 ? "bought" : "sold"
             return `${action} ${Math.abs(item.qty)}x ${weaponName} @ ${item.price}`
         })
@@ -382,7 +404,12 @@ async function internalBuy(req, res) {
 
         const userResponse = buildUserResponse(user, weapons)
         logger.debug(
-            { ...ctx, we: weapons, coins: newCoins, encodedCoins: userResponse.an },
+            {
+                ...ctx,
+                we: weapons,
+                coins: newCoins,
+                encodedCoins: userResponse.an,
+            },
             "Sending ibya response"
         )
 

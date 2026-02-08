@@ -4,7 +4,11 @@
  * All rights reserved.
  */
 
-const { exportProfile, importProfile, syncProfile } = require("./profileService")
+const {
+    exportProfile,
+    importProfile,
+    syncProfile,
+} = require("./profileService")
 
 // Mock the database module
 jest.mock("../../db/navalclash", () => {
@@ -187,9 +191,9 @@ describe("profileService", () => {
 
             dbFindUserByUuidAndName.mockResolvedValue(null)
             mockConn.execute
-                .mockResolvedValueOnce([[]])  // PIN uniqueness check
-                .mockResolvedValueOnce([{ insertId: 99 }])  // INSERT
-                .mockResolvedValueOnce([[newUser]])  // SELECT after insert
+                .mockResolvedValueOnce([[]]) // PIN uniqueness check
+                .mockResolvedValueOnce([{ insertId: 99 }]) // INSERT
+                .mockResolvedValueOnce([[newUser]]) // SELECT after insert
 
             await exportProfile(mockReq, mockRes)
 
@@ -224,8 +228,8 @@ describe("profileService", () => {
             dbFindUserByUuidAndName.mockResolvedValue(userWithoutPin)
             dbUpdateProfileAndStats.mockResolvedValue(true)
             mockConn.execute
-                .mockResolvedValueOnce([[]])  // PIN uniqueness check
-                .mockResolvedValueOnce([{}])  // UPDATE PIN
+                .mockResolvedValueOnce([[]]) // PIN uniqueness check
+                .mockResolvedValueOnce([{}]) // UPDATE PIN
 
             await exportProfile(mockReq, mockRes)
 
@@ -338,7 +342,10 @@ describe("profileService", () => {
 
             await importProfile(mockReq, mockRes)
 
-            expect(dbFindUserByNameAndPin).toHaveBeenCalledWith("TestPlayer", 1234)
+            expect(dbFindUserByNameAndPin).toHaveBeenCalledWith(
+                "TestPlayer",
+                1234
+            )
             expect(mockRes.json).toHaveBeenCalledWith({
                 type: "uimpres",
                 u: expect.objectContaining({
@@ -403,7 +410,11 @@ describe("profileService", () => {
 
             await importProfile(mockReq, mockRes)
 
-            expect(dbLogProfileAction).toHaveBeenCalledWith(42, "import", "v=30")
+            expect(dbLogProfileAction).toHaveBeenCalledWith(
+                42,
+                "import",
+                "v=30"
+            )
         })
     })
 
@@ -431,8 +442,15 @@ describe("profileService", () => {
 
             await syncProfile(mockReq, mockRes)
 
-            expect(dbFindUserByUuidAndName).toHaveBeenCalledWith("uuid123", "TestPlayer")
-            expect(dbSyncUserProfile).toHaveBeenCalledWith(42, mockReq.body.u, 25)
+            expect(dbFindUserByUuidAndName).toHaveBeenCalledWith(
+                "uuid123",
+                "TestPlayer"
+            )
+            expect(dbSyncUserProfile).toHaveBeenCalledWith(
+                42,
+                mockReq.body.u,
+                25
+            )
             expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
         })
 
@@ -451,9 +469,16 @@ describe("profileService", () => {
 
             await syncProfile(mockReq, mockRes)
 
-            expect(dbFindUserByUuidAndName).toHaveBeenCalledWith("uuid123", "TestPlayer")
+            expect(dbFindUserByUuidAndName).toHaveBeenCalledWith(
+                "uuid123",
+                "TestPlayer"
+            )
             expect(dbFindUserByUuid).toHaveBeenCalledWith("uuid123")
-            expect(dbSyncUserProfile).toHaveBeenCalledWith(42, mockReq.body.u, 25)
+            expect(dbSyncUserProfile).toHaveBeenCalledWith(
+                42,
+                mockReq.body.u,
+                25
+            )
             expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
         })
 
@@ -478,7 +503,11 @@ describe("profileService", () => {
                 uuid: "new-uuid-123",
                 gameVariant: 1,
             })
-            expect(dbSyncUserProfile).toHaveBeenCalledWith(99, mockReq.body.u, 25)
+            expect(dbSyncUserProfile).toHaveBeenCalledWith(
+                99,
+                mockReq.body.u,
+                25
+            )
             expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
         })
 

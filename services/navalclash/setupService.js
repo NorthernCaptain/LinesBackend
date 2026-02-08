@@ -79,7 +79,7 @@ async function getMinVersion() {
  */
 async function isMaintenanceMode() {
     const config = await getConfig("maintenance_mode")
-    return !!(config?.int_value)
+    return !!config?.int_value
 }
 
 /**

@@ -36,7 +36,9 @@ jest.mock("../../db/navalclash", () => ({
 }))
 
 jest.mock("./weaponService", () => ({
-    validateWeaponPlacement: jest.fn().mockResolvedValue({ valid: true, counts: {} }),
+    validateWeaponPlacement: jest
+        .fn()
+        .mockResolvedValue({ valid: true, counts: {} }),
     trackWeaponPlacement: jest.fn().mockResolvedValue(true),
     trackRadarUsage: jest.fn().mockResolvedValue(true),
     trackShuffleUsage: jest.fn().mockResolvedValue(true),
@@ -179,18 +181,26 @@ describe("services/navalclash/gameService", () => {
 
         it("should return half of win bonus for SURRENDER_WIN_BONUS", () => {
             // Win bonus would be 13, half is 6
-            expect(calculateBonusCoins(BONUS_TYPE.SURRENDER_WIN_BONUS, 2, 6)).toBe(6)
+            expect(
+                calculateBonusCoins(BONUS_TYPE.SURRENDER_WIN_BONUS, 2, 6)
+            ).toBe(6)
         })
 
         it("should return at least 1 for SURRENDER_WIN_BONUS", () => {
             // Win bonus would be 4, half is 2, so return 2
-            expect(calculateBonusCoins(BONUS_TYPE.SURRENDER_WIN_BONUS, 10, 1)).toBe(2)
+            expect(
+                calculateBonusCoins(BONUS_TYPE.SURRENDER_WIN_BONUS, 10, 1)
+            ).toBe(2)
             // Even with very low bonus, minimum is 1
-            expect(calculateBonusCoins(BONUS_TYPE.SURRENDER_WIN_BONUS, 5, 5)).toBe(4) // 9/2 = 4
+            expect(
+                calculateBonusCoins(BONUS_TYPE.SURRENDER_WIN_BONUS, 5, 5)
+            ).toBe(4) // 9/2 = 4
         })
 
         it("should return -2 for SURRENDER_LOST_BONUS", () => {
-            expect(calculateBonusCoins(BONUS_TYPE.SURRENDER_LOST_BONUS)).toBe(-2)
+            expect(calculateBonusCoins(BONUS_TYPE.SURRENDER_LOST_BONUS)).toBe(
+                -2
+            )
         })
 
         it("should return 1 for INTERRUPT_WIN_BONUS", () => {
@@ -202,7 +212,9 @@ describe("services/navalclash/gameService", () => {
         })
 
         it("should return +2 for LOST_BONUS_WITH_WEAPONS", () => {
-            expect(calculateBonusCoins(BONUS_TYPE.LOST_BONUS_WITH_WEAPONS)).toBe(2)
+            expect(
+                calculateBonusCoins(BONUS_TYPE.LOST_BONUS_WITH_WEAPONS)
+            ).toBe(2)
         })
 
         it("should return 0 for unknown bonus type", () => {
@@ -492,11 +504,11 @@ describe("services/navalclash/gameService", () => {
         it("should send greeting message to opponent", async () => {
             await greeting(mockReq, mockRes)
 
-            expect(sendMessage).toHaveBeenCalledWith(
-                1000n,
-                "greeting",
-                { u: { name: "Player1" }, v: 1, ni: "info" }
-            )
+            expect(sendMessage).toHaveBeenCalledWith(1000n, "greeting", {
+                u: { name: "Player1" },
+                v: 1,
+                ni: "info",
+            })
             expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
         })
     })

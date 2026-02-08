@@ -89,7 +89,11 @@ async function validateWeaponPlacement(weapons, userId, ctx) {
  * @returns {Promise<boolean>} True if successful
  */
 async function trackWeaponPlacement(baseSessionId, player, weaponCounts, ctx) {
-    const result = await dbSetTrackedWeapons(baseSessionId, player, weaponCounts)
+    const result = await dbSetTrackedWeapons(
+        baseSessionId,
+        player,
+        weaponCounts
+    )
     if (result) {
         logger.debug(
             { ...ctx, player, weaponCounts },

@@ -35,10 +35,24 @@ describe("db/navalclash/leaderboard", () => {
     describe("dbGetTopScores", () => {
         it("should return top scores from both Android and Human categories", async () => {
             const androidScores = [
-                { id: 1, score: 5000, user_id: 1, name: "Player1", game_type: 1, created_at: new Date() },
+                {
+                    id: 1,
+                    score: 5000,
+                    user_id: 1,
+                    name: "Player1",
+                    game_type: 1,
+                    created_at: new Date(),
+                },
             ]
             const humanScores = [
-                { id: 2, score: 4500, user_id: 2, name: "Player2", game_type: 3, created_at: new Date() },
+                {
+                    id: 2,
+                    score: 4500,
+                    user_id: 2,
+                    name: "Player2",
+                    game_type: 3,
+                    created_at: new Date(),
+                },
             ]
             mockQuery
                 .mockResolvedValueOnce([androidScores]) // Android query

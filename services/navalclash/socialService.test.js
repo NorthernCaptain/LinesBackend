@@ -283,7 +283,10 @@ describe("services/navalclash/socialService", () => {
 
             await getRivals(req, mockRes)
 
-            expect(mockRes.json).toHaveBeenCalledWith({ type: "usaved", ar: [] })
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "usaved",
+                ar: [],
+            })
         })
 
         it("should return rivals with list type", async () => {
@@ -455,7 +458,9 @@ describe("services/navalclash/socialService", () => {
             expect(response.ar[0].iw).toBe(1) // user id=1 won
             expect(response.ar[1].iw).toBe(0) // user id=1 lost
             expect(response.ar[0].t).toBe(2) // TYPE_RECENT
-            expect(response.ar[0].gp).toBe(Math.floor(playedAt.getTime() / 1000)) // game played time
+            expect(response.ar[0].gp).toBe(
+                Math.floor(playedAt.getTime() / 1000)
+            ) // game played time
         })
     })
 
@@ -475,7 +480,7 @@ describe("services/navalclash/socialService", () => {
                         session_id: 1000n,
                         name: "WaitingUser",
                         face: 1,
-                        last_seen: -2,  // Setting up
+                        last_seen: -2, // Setting up
                         is_playing: 0,
                     },
                 ],
@@ -493,8 +498,8 @@ describe("services/navalclash/socialService", () => {
             expect(response.type).toBe("uair")
             expect(response.ar).toHaveLength(1)
             expect(response.ar[0].sid).toBe("1000")
-            expect(response.ar[0].s).toBe(-2)  // Setting up
-            expect(response.ar[0].ip).toBe(0)  // Not playing
+            expect(response.ar[0].s).toBe(-2) // Setting up
+            expect(response.ar[0].ip).toBe(0) // Not playing
         })
 
         it("should exclude current user from online list", async () => {
@@ -530,7 +535,7 @@ describe("services/navalclash/socialService", () => {
                         session_id: 1000n,
                         name: "PlayingUser",
                         face: 1,
-                        last_seen: -1,  // Currently playing
+                        last_seen: -1, // Currently playing
                         is_playing: 1,
                     },
                 ],
@@ -541,9 +546,9 @@ describe("services/navalclash/socialService", () => {
             await getOnlineUsers(req, mockRes)
 
             const response = mockRes.json.mock.calls[0][0]
-            expect(response.ar[0].sid).toBeNull()  // No session ID for playing users
-            expect(response.ar[0].s).toBe(-1)  // Currently playing
-            expect(response.ar[0].ip).toBe(1)  // Is playing
+            expect(response.ar[0].sid).toBeNull() // No session ID for playing users
+            expect(response.ar[0].s).toBe(-1) // Currently playing
+            expect(response.ar[0].ip).toBe(1) // Is playing
         })
     })
 
@@ -691,7 +696,16 @@ describe("services/navalclash/socialService", () => {
         it("should send acceptance message to inviter", async () => {
             mockExecute
                 .mockResolvedValueOnce([
-                    [{ id: 1, name: "Responder", uuid: "resp-uuid", rank: 5, face: 2, isbanned: 0 }],
+                    [
+                        {
+                            id: 1,
+                            name: "Responder",
+                            uuid: "resp-uuid",
+                            rank: 5,
+                            face: 2,
+                            isbanned: 0,
+                        },
+                    ],
                 ]) // User lookup
                 .mockResolvedValueOnce([
                     [{ id: 1000, status: 0, user_one_id: 10 }],
@@ -704,31 +718,34 @@ describe("services/navalclash/socialService", () => {
 
             await userAnswer(req, mockRes)
 
-            expect(mockSendMessage).toHaveBeenCalledWith(
-                1000n,
-                "info",
-                {
-                    msg: {
-                        type: "msg",
-                        m: MSG_PERSONAL_RIVAL_ACCEPTED,
-                        p: ["Responder"],
-                        c: false,
-                    },
-                    u: expect.objectContaining({
-                        nam: "Responder",
-                        i: 1,
-                        rk: 5,
-                        fc: 2,
-                    }),
-                }
-            )
+            expect(mockSendMessage).toHaveBeenCalledWith(1000n, "info", {
+                msg: {
+                    type: "msg",
+                    m: MSG_PERSONAL_RIVAL_ACCEPTED,
+                    p: ["Responder"],
+                    c: false,
+                },
+                u: expect.objectContaining({
+                    nam: "Responder",
+                    i: 1,
+                    rk: 5,
+                    fc: 2,
+                }),
+            })
             expect(mockRes.json).toHaveBeenCalledWith({ type: "uok" })
         })
 
         it("should send rejection message to inviter", async () => {
             mockExecute
                 .mockResolvedValueOnce([
-                    [{ id: 1, name: "Responder", uuid: "resp-uuid", isbanned: 0 }],
+                    [
+                        {
+                            id: 1,
+                            name: "Responder",
+                            uuid: "resp-uuid",
+                            isbanned: 0,
+                        },
+                    ],
                 ]) // User lookup
                 .mockResolvedValueOnce([
                     [{ id: 1000, status: 0, user_one_id: 10 }],

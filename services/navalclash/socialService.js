@@ -31,23 +31,26 @@ function serializeRival(row) {
         const date = row.lastseen || row.updated_at
         const lastSeenTime = new Date(date).getTime()
         const now = Date.now()
-        lastSeenSecondsAgo = Math.max(0, Math.floor((now - lastSeenTime) / 1000))
+        lastSeenSecondsAgo = Math.max(
+            0,
+            Math.floor((now - lastSeenTime) / 1000)
+        )
     }
 
     return {
-        type: "rnf",                    // Required - client checks this first!
-        id: row.id,                     // User's database ID
-        rid: row.rival_id || row.id,    // Rival ID for list operations
-        n: row.name,                    // Name
-        r: row.rank || 0,               // Rank
-        l: row.lang || "--",            // Language
-        g: row.games || 0,              // Games played
-        gw: row.gameswon || 0,          // Games won
-        d: row.device || "",            // Device name
-        v: row.version || 0,            // Version
-        f: row.face || 0,               // Face/avatar
-        s: lastSeenSecondsAgo,          // Last seen (seconds ago)
-        uid: row.uuid || "",            // UUID
+        type: "rnf", // Required - client checks this first!
+        id: row.id, // User's database ID
+        rid: row.rival_id || row.id, // Rival ID for list operations
+        n: row.name, // Name
+        r: row.rank || 0, // Rank
+        l: row.lang || "--", // Language
+        g: row.games || 0, // Games played
+        gw: row.gameswon || 0, // Games won
+        d: row.device || "", // Device name
+        v: row.version || 0, // Version
+        f: row.face || 0, // Face/avatar
+        s: lastSeenSecondsAgo, // Last seen (seconds ago)
+        uid: row.uuid || "", // UUID
     }
 }
 
@@ -95,7 +98,8 @@ async function addRival(req, res) {
     }
 
     ctx.uid = user.id
-    const listType = tp === LIST_TYPE.BLOCKED ? LIST_TYPE.BLOCKED : LIST_TYPE.FRIENDS
+    const listType =
+        tp === LIST_TYPE.BLOCKED ? LIST_TYPE.BLOCKED : LIST_TYPE.FRIENDS
 
     try {
         await pool.execute(
@@ -104,7 +108,10 @@ async function addRival(req, res) {
              ON DUPLICATE KEY UPDATE list_type = VALUES(list_type)`,
             [user.id, listType, rid]
         )
-        logger.info(ctx, `Rival added to ${listType === LIST_TYPE.BLOCKED ? "blocked" : "friends"} list`)
+        logger.info(
+            ctx,
+            `Rival added to ${listType === LIST_TYPE.BLOCKED ? "blocked" : "friends"} list`
+        )
         return res.json({ type: "uok" })
     } catch (error) {
         logger.error(ctx, "addRival error:", error.message)
@@ -142,14 +149,18 @@ async function deleteRival(req, res) {
     }
 
     ctx.uid = user.id
-    const listType = tp === LIST_TYPE.BLOCKED ? LIST_TYPE.BLOCKED : LIST_TYPE.FRIENDS
+    const listType =
+        tp === LIST_TYPE.BLOCKED ? LIST_TYPE.BLOCKED : LIST_TYPE.FRIENDS
 
     try {
         await pool.execute(
             "DELETE FROM userlists WHERE user_id = ? AND rival_id = ? AND list_type = ?",
             [user.id, rid, listType]
         )
-        logger.info(ctx, `Rival removed from ${listType === LIST_TYPE.BLOCKED ? "blocked" : "friends"} list`)
+        logger.info(
+            ctx,
+            `Rival removed from ${listType === LIST_TYPE.BLOCKED ? "blocked" : "friends"} list`
+        )
         return res.json({ type: "uok" })
     } catch (error) {
         logger.error(ctx, "deleteRival error:", error.message)
@@ -203,7 +214,10 @@ async function getRivals(req, res) {
         const rivals = rows.map((row) => ({
             ...serializeRival(row),
             // Map list_type (1=friends, 2=blocked) to RivalInfo type (3=saved, 4=rejected)
-            t: row.list_type === LIST_TYPE.FRIENDS ? RIVAL_TYPE.SAVED : RIVAL_TYPE.REJECTED,
+            t:
+                row.list_type === LIST_TYPE.FRIENDS
+                    ? RIVAL_TYPE.SAVED
+                    : RIVAL_TYPE.REJECTED,
         }))
 
         logger.debug(ctx, `Returning ${rivals.length} rivals`)
@@ -329,12 +343,15 @@ async function getRecentOpponents(req, res) {
 
         const opponents = rows.map((row) => ({
             ...serializeRival(row),
-            t: RIVAL_TYPE.RECENT,                           // Type = recent opponent
-            iw: row.winner_id === user.id ? 1 : 0,              // I won flag
-            gp: Math.floor(new Date(row.played_at).getTime() / 1000),  // Game played time (seconds)
+            t: RIVAL_TYPE.RECENT, // Type = recent opponent
+            iw: row.winner_id === user.id ? 1 : 0, // I won flag
+            gp: Math.floor(new Date(row.played_at).getTime() / 1000), // Game played time (seconds)
         }))
 
-        logger.debug({ ...ctx, count: opponents.length }, "Returning recent opponents")
+        logger.debug(
+            { ...ctx, count: opponents.length },
+            "Returning recent opponents"
+        )
         return res.json({ type: "urcnt", ar: opponents })
     } catch (error) {
         logger.error(ctx, "getRecentOpponents error:", error.message)
@@ -396,10 +413,10 @@ async function getOnlineUsers(req, res) {
             d: "",
             v: row.version || 0,
             f: row.face || 0,
-            s: row.last_seen,                               // -1=playing, -2=setup, >0=seconds ago
+            s: row.last_seen, // -1=playing, -2=setup, >0=seconds ago
             uid: row.uuid || "",
-            sid: row.is_playing ? null : row.session_id.toString(),  // Session ID only for waiting users
-            ip: row.is_playing,                             // Is playing flag
+            sid: row.is_playing ? null : row.session_id.toString(), // Session ID only for waiting users
+            ip: row.is_playing, // Is playing flag
         }))
 
         logger.debug({ ...ctx, count: users.length }, "Returning online users")
@@ -409,7 +426,6 @@ async function getOnlineUsers(req, res) {
         return res.json({ type: "error", reason: "Database error" })
     }
 }
-
 
 /**
  * Checks if someone is waiting to play with a specific user (personal game invitation).
@@ -571,10 +587,13 @@ async function findUserBySession(sessionId) {
 
         if (sessions.length === 0) return null
 
-        const userId = player === 0 ? sessions[0].user_one_id : sessions[0].user_two_id
+        const userId =
+            player === 0 ? sessions[0].user_one_id : sessions[0].user_two_id
         if (!userId) return null
 
-        const [users] = await pool.execute("SELECT * FROM users WHERE id = ?", [userId])
+        const [users] = await pool.execute("SELECT * FROM users WHERE id = ?", [
+            userId,
+        ])
         return users.length > 0 ? users[0] : null
     } catch (error) {
         return null
@@ -623,7 +642,10 @@ async function userMarker(req, res) {
     if (!user) {
         // User hasn't connected yet - this is normal for first-time users
         // They'll be created during /connect, just return ok silently
-        logger.debug(ctx, "User marker - user not found (will be created on connect)")
+        logger.debug(
+            ctx,
+            "User marker - user not found (will be created on connect)"
+        )
         return res.json({ type: "uok" })
     }
 
@@ -643,7 +665,11 @@ async function userMarker(req, res) {
             const invitation = await findPendingInvitation(user.id, gameVariant)
             if (invitation) {
                 logger.info(
-                    { ...ctx, inviterId: invitation.inviter.id, inviterSid: invitation.sessionId },
+                    {
+                        ...ctx,
+                        inviterId: invitation.inviter.id,
+                        inviterSid: invitation.sessionId,
+                    },
                     `Found pending invitation from ${invitation.inviter.name}`
                 )
 
@@ -803,7 +829,9 @@ async function userAnswer(req, res) {
 
         // Build the info message to send to the inviter
         // Format: { type: "msg", m: <msgId>, p: [<params>], c: <needConfirm> }
-        const msgId = ans ? MSG.PERSONAL_RIVAL_ACCEPTED : MSG.PERSONAL_RIVAL_REJECTED
+        const msgId = ans
+            ? MSG.PERSONAL_RIVAL_ACCEPTED
+            : MSG.PERSONAL_RIVAL_REJECTED
         const infoMessage = {
             type: "msg",
             m: msgId,

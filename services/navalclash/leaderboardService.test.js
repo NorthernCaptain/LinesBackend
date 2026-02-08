@@ -251,29 +251,44 @@ describe("services/navalclash/leaderboardService", () => {
 
         it("should process client scores with existing user", async () => {
             dbGetTopScores.mockResolvedValue([])
-            dbFindUserByUuidAndName.mockResolvedValue({ id: 42, name: "TestPlayer", uuid: "test-uuid-12345" })
+            dbFindUserByUuidAndName.mockResolvedValue({
+                id: 42,
+                name: "TestPlayer",
+                uuid: "test-uuid-12345",
+            })
             dbSubmitScore.mockResolvedValue({ success: true, scoreId: 999 })
 
             const req = {
                 requestId: "test",
                 body: {
                     var: 1,
-                    scores: [{
-                        score: 5000,
-                        time: 60000,
-                        gtype: 2, // web (client format)
-                        u: { id: "test-uuid-12345", nam: "TestPlayer", rk: 5 },
-                    }],
+                    scores: [
+                        {
+                            score: 5000,
+                            time: 60000,
+                            gtype: 2, // web (client format)
+                            u: {
+                                id: "test-uuid-12345",
+                                nam: "TestPlayer",
+                                rk: 5,
+                            },
+                        },
+                    ],
                 },
             }
             await getTopScores(req, mockRes)
 
-            expect(dbFindUserByUuidAndName).toHaveBeenCalledWith("test-uuid-12345", "TestPlayer")
-            expect(dbSubmitScore).toHaveBeenCalledWith(expect.objectContaining({
-                userId: 42,
-                score: 5000,
-                gameType: 3, // web (DB format: client 2 + 1 = 3)
-            }))
+            expect(dbFindUserByUuidAndName).toHaveBeenCalledWith(
+                "test-uuid-12345",
+                "TestPlayer"
+            )
+            expect(dbSubmitScore).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    userId: 42,
+                    score: 5000,
+                    gameType: 3, // web (DB format: client 2 + 1 = 3)
+                })
+            )
         })
 
         it("should create user when not found (like old Java server)", async () => {
@@ -287,12 +302,18 @@ describe("services/navalclash/leaderboardService", () => {
                 requestId: "test",
                 body: {
                     var: 1,
-                    scores: [{
-                        score: 5000,
-                        time: 60000,
-                        gtype: 0, // android (client format)
-                        u: { id: "new-user-uuid-12345", nam: "NewPlayer", rk: 3 },
-                    }],
+                    scores: [
+                        {
+                            score: 5000,
+                            time: 60000,
+                            gtype: 0, // android (client format)
+                            u: {
+                                id: "new-user-uuid-12345",
+                                nam: "NewPlayer",
+                                rk: 3,
+                            },
+                        },
+                    ],
                 },
             }
             await getTopScores(req, mockRes)
@@ -302,18 +323,24 @@ describe("services/navalclash/leaderboardService", () => {
                 uuid: "new-user-uuid-12345",
                 gameVariant: 1,
             })
-            expect(dbSubmitScore).toHaveBeenCalledWith(expect.objectContaining({
-                userId: 123,
-                score: 5000,
-                gameType: 1, // android (DB format: client 0 + 1 = 1)
-            }))
+            expect(dbSubmitScore).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    userId: 123,
+                    score: 5000,
+                    gameType: 1, // android (DB format: client 0 + 1 = 1)
+                })
+            )
         })
 
         it("should create opponent when not found", async () => {
             dbGetTopScores.mockResolvedValue([])
             // User exists
             dbFindUserByUuidAndName
-                .mockResolvedValueOnce({ id: 42, name: "Winner", uuid: "winner-uuid-12345" })
+                .mockResolvedValueOnce({
+                    id: 42,
+                    name: "Winner",
+                    uuid: "winner-uuid-12345",
+                })
                 .mockResolvedValueOnce(null) // Opponent not found by uuid+name
             dbFindUserByUuid.mockResolvedValue(null) // Opponent not found by uuid only
             dbCreateUser.mockResolvedValue(99) // Opponent created with ID 99
@@ -323,13 +350,23 @@ describe("services/navalclash/leaderboardService", () => {
                 requestId: "test",
                 body: {
                     var: 1,
-                    scores: [{
-                        score: 5000,
-                        time: 60000,
-                        gtype: 2,
-                        u: { id: "winner-uuid-12345", nam: "Winner", rk: 5 },
-                        o: { id: "opponent-uuid-12345", nam: "Opponent", rk: 3 },
-                    }],
+                    scores: [
+                        {
+                            score: 5000,
+                            time: 60000,
+                            gtype: 2,
+                            u: {
+                                id: "winner-uuid-12345",
+                                nam: "Winner",
+                                rk: 5,
+                            },
+                            o: {
+                                id: "opponent-uuid-12345",
+                                nam: "Opponent",
+                                rk: 3,
+                            },
+                        },
+                    ],
                 },
             }
             await getTopScores(req, mockRes)
@@ -339,10 +376,12 @@ describe("services/navalclash/leaderboardService", () => {
                 uuid: "opponent-uuid-12345",
                 gameVariant: 1,
             })
-            expect(dbSubmitScore).toHaveBeenCalledWith(expect.objectContaining({
-                userId: 42,
-                opponentId: 99,
-            }))
+            expect(dbSubmitScore).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    userId: 42,
+                    opponentId: 99,
+                })
+            )
         })
 
         it("should skip scores with invalid UUIDs", async () => {
@@ -353,9 +392,21 @@ describe("services/navalclash/leaderboardService", () => {
                 body: {
                     var: 1,
                     scores: [
-                        { score: 5000, time: 60000, u: { id: "android", nam: "Test" } },
-                        { score: 5000, time: 60000, u: { id: "null", nam: "Test" } },
-                        { score: 5000, time: 60000, u: { id: "short", nam: "Test" } },
+                        {
+                            score: 5000,
+                            time: 60000,
+                            u: { id: "android", nam: "Test" },
+                        },
+                        {
+                            score: 5000,
+                            time: 60000,
+                            u: { id: "null", nam: "Test" },
+                        },
+                        {
+                            score: 5000,
+                            time: 60000,
+                            u: { id: "short", nam: "Test" },
+                        },
                     ],
                 },
             }
@@ -419,17 +470,7 @@ describe("services/navalclash/leaderboardService", () => {
             dbSubmitScore.mockResolvedValue({ success: true, scoreId: 42 })
 
             const ctx = { reqId: "test" }
-            const result = await submitScore(
-                1,
-                2,
-                5000,
-                60000,
-                3,
-                1,
-                5,
-                4,
-                ctx
-            )
+            const result = await submitScore(1, 2, 5000, 60000, 3, 1, 5, 4, ctx)
 
             expect(result).toEqual({ success: true, scoreId: 42 })
             expect(dbSubmitScore).toHaveBeenCalledWith({

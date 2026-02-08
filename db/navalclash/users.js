@@ -314,7 +314,9 @@ async function dbLogProfileAction(userId, action, details) {
         return true
     } catch (error) {
         // Log table might not exist, just log to console
-        console.log(`Profile action: user=${userId} action=${action} ${details}`)
+        console.log(
+            `Profile action: user=${userId} action=${action} ${details}`
+        )
         return false
     }
 }
@@ -356,7 +358,11 @@ async function dbUpdateUserLastDevice(userId, deviceId) {
  * @returns {Promise<boolean>} True if updated successfully
  */
 async function dbUpdateLocalStats(conn, userId, clientUser) {
-    if (!clientUser || !Array.isArray(clientUser.ga) || !Array.isArray(clientUser.wa)) {
+    if (
+        !clientUser ||
+        !Array.isArray(clientUser.ga) ||
+        !Array.isArray(clientUser.wa)
+    ) {
         return false
     }
 
@@ -421,8 +427,7 @@ async function dbUpdateLocalStats(conn, userId, clientUser) {
  * @returns {Promise<boolean>} True if updated successfully
  */
 async function dbUpdateProfileAndStats(db, userId, userData) {
-    const hasStats =
-        Array.isArray(userData.ga) && Array.isArray(userData.wa)
+    const hasStats = Array.isArray(userData.ga) && Array.isArray(userData.wa)
 
     try {
         if (hasStats) {

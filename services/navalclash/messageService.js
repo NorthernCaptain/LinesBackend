@@ -313,18 +313,15 @@ async function poll(req, res) {
         }
 
         // No message available, set up long poll
-        setupLongPoll(
-            res,
-            sessionId,
-            afterMsgId,
-            clientPollId,
-            requestId
-        )
+        setupLongPoll(res, sessionId, afterMsgId, clientPollId, requestId)
 
         // Race condition check - message might have arrived while setting up
         const raceCheck = await fetchNextMessage(sessionId, afterMsgId)
         if (raceCheck && pendingPolls.has(requestId)) {
-            logger.debug(ctx, "Race condition detected, message arrived during setup")
+            logger.debug(
+                ctx,
+                "Race condition detected, message arrived during setup"
+            )
             fetchAndRespond(pendingPolls.get(requestId))
         }
     } catch (error) {
@@ -387,7 +384,10 @@ async function send(req, res) {
     }
 
     if (!msgType) {
-        logger.warn({ reqId: requestId, sid }, "Send request missing message type")
+        logger.warn(
+            { reqId: requestId, sid },
+            "Send request missing message type"
+        )
         return res.json({ type: "error", reason: "No message type" })
     }
 

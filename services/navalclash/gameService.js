@@ -1402,7 +1402,10 @@ async function weaponsList(req, res) {
     const { sid, weap } = req.body
     const ctx = { reqId: req.requestId, sid }
 
-    logger.debug({ ...ctx, weapCount: weap?.length || 0 }, "Weapon list request")
+    logger.debug(
+        { ...ctx, weapCount: weap?.length || 0 },
+        "Weapon list request"
+    )
 
     const session = validateSession(sid, res, ctx)
     if (!session) return

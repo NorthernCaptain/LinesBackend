@@ -38,7 +38,7 @@ describe("db/navalclash/weapons", () => {
 
             const result = await dbGetUserWeaponInventory(1)
 
-            expect(result).toEqual({ "0": 5, "2": 3 })
+            expect(result).toEqual({ 0: 5, 2: 3 })
             expect(mockExecute).toHaveBeenCalledWith(
                 expect.stringContaining("SELECT item_id, quantity"),
                 [1]
@@ -64,7 +64,7 @@ describe("db/navalclash/weapons", () => {
 
     describe("dbGetTrackedWeapons", () => {
         it("should return tracked weapons for player 0", async () => {
-            const tracked = { "0": 2, "1": 1 }
+            const tracked = { 0: 2, 1: 1 }
             mockExecute.mockResolvedValue([[{ tracked }]])
 
             const result = await dbGetTrackedWeapons("1000", 0)
@@ -77,7 +77,7 @@ describe("db/navalclash/weapons", () => {
         })
 
         it("should return tracked weapons for player 1", async () => {
-            const tracked = { "2": 3 }
+            const tracked = { 2: 3 }
             mockExecute.mockResolvedValue([[{ tracked }]])
 
             const result = await dbGetTrackedWeapons("1000", 1)
@@ -118,7 +118,7 @@ describe("db/navalclash/weapons", () => {
         it("should set tracked weapons for player 0", async () => {
             mockExecute.mockResolvedValue([{ affectedRows: 1 }])
 
-            const weapons = { "0": 2, "2": 1 }
+            const weapons = { 0: 2, 2: 1 }
             const result = await dbSetTrackedWeapons("1000", 0, weapons)
 
             expect(result).toBe(true)
@@ -131,7 +131,7 @@ describe("db/navalclash/weapons", () => {
         it("should set tracked weapons for player 1", async () => {
             mockExecute.mockResolvedValue([{ affectedRows: 1 }])
 
-            const weapons = { "1": 1 }
+            const weapons = { 1: 1 }
             const result = await dbSetTrackedWeapons("1000", 1, weapons)
 
             expect(result).toBe(true)
@@ -256,7 +256,7 @@ describe("db/navalclash/weapons", () => {
         it("should consume weapons from inventory", async () => {
             mockConn.execute.mockResolvedValue([{ affectedRows: 1 }])
 
-            const weapons = { "0": 2, "2": 1 }
+            const weapons = { 0: 2, 2: 1 }
             const result = await dbConsumeWeapons(1, weapons, mockConn)
 
             expect(result).toBe(true)
@@ -280,7 +280,7 @@ describe("db/navalclash/weapons", () => {
         it("should skip weapons with zero count", async () => {
             mockConn.execute.mockResolvedValue([{ affectedRows: 1 }])
 
-            const weapons = { "0": 0, "2": 1 }
+            const weapons = { 0: 0, 2: 1 }
             const result = await dbConsumeWeapons(1, weapons, mockConn)
 
             expect(result).toBe(true)
@@ -291,7 +291,7 @@ describe("db/navalclash/weapons", () => {
         it("should return false on error", async () => {
             mockConn.execute.mockRejectedValue(new Error("DB error"))
 
-            const result = await dbConsumeWeapons(1, { "0": 1 }, mockConn)
+            const result = await dbConsumeWeapons(1, { 0: 1 }, mockConn)
 
             expect(result).toBe(false)
         })

@@ -223,9 +223,7 @@ const RANK_THRESHOLDS_PAID = [
 ]
 
 // Star thresholds for each rank (free version - more lenient)
-const RANK_THRESHOLDS_FREE = [
-    0, 0, 10, 30, 60, 100, 200, 350, 600, 900, 1400,
-]
+const RANK_THRESHOLDS_FREE = [0, 0, 10, 30, 60, 100, 200, 350, 600, 900, 1400]
 
 // Default rank thresholds (use paid version)
 const RANK_THRESHOLDS = RANK_THRESHOLDS_PAID

@@ -155,10 +155,7 @@ async function getOrCreateUser(uuid, name, gameVariant, ctx) {
     }
 
     // User not found - create new user (like old Java server)
-    logger.info(
-        { ...ctx, uuid, name },
-        "Creating new user from client score"
-    )
+    logger.info({ ...ctx, uuid, name }, "Creating new user from client score")
     const newUserId = await dbCreateUser({
         name: name || "Player",
         uuid,
@@ -259,7 +256,12 @@ async function processClientScores(clientScores, gameVariant, ctx) {
             if (result.success) {
                 inserted++
                 logger.info(
-                    { ...ctx, userId: user.id, score: score.score, scoreId: result.scoreId },
+                    {
+                        ...ctx,
+                        userId: user.id,
+                        score: score.score,
+                        scoreId: result.scoreId,
+                    },
                     "Inserted client score"
                 )
             }
@@ -291,7 +293,12 @@ async function getTopScores(req, res) {
     const gameType = req.body.tp // Optional game type filter
     const clientVersion = req.body.v || 0
     const clientScores = req.body.scores || []
-    const ctx = { reqId: req.requestId, gameVariant, gameType, v: clientVersion }
+    const ctx = {
+        reqId: req.requestId,
+        gameVariant,
+        gameType,
+        v: clientVersion,
+    }
 
     logger.info(
         { ...ctx, clientScoreCount: clientScores.length },
@@ -310,7 +317,11 @@ async function getTopScores(req, res) {
                 ctx
             )
             logger.info(
-                { ...ctx, insertedCount, totalClientScores: clientScores.length },
+                {
+                    ...ctx,
+                    insertedCount,
+                    totalClientScores: clientScores.length,
+                },
                 "Processed client scores"
             )
         }
@@ -345,11 +356,18 @@ async function getTopScores(req, res) {
             }
 
             logger.info(
-                { ...ctx, scoreCount: scores.length, starCount: starScores.length },
+                {
+                    ...ctx,
+                    scoreCount: scores.length,
+                    starCount: starScores.length,
+                },
                 "Returning top scores with topstars"
             )
         } else {
-            logger.info({ ...ctx, count: scores.length }, "Returning top scores")
+            logger.info(
+                { ...ctx, count: scores.length },
+                "Returning top scores"
+            )
         }
 
         logger.info(ctx, "TopScores response:", JSON.stringify(response))

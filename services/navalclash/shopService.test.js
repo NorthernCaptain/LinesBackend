@@ -205,8 +205,18 @@ describe("services/navalclash/shopService", () => {
             mockExecute
                 .mockResolvedValueOnce([
                     [
-                        { item_type: "weapon", item_id: "torpedo", quantity: 3, times_used: 1 },
-                        { item_type: "skin", item_id: "camo", quantity: 1, times_used: 0 },
+                        {
+                            item_type: "weapon",
+                            item_id: "torpedo",
+                            quantity: 3,
+                            times_used: 1,
+                        },
+                        {
+                            item_type: "skin",
+                            item_id: "camo",
+                            quantity: 1,
+                            times_used: 0,
+                        },
                     ],
                 ])
                 .mockResolvedValueOnce([[{ coins: 500 }]])
@@ -224,9 +234,7 @@ describe("services/navalclash/shopService", () => {
         })
 
         it("should return 0 coins if user not found", async () => {
-            mockExecute
-                .mockResolvedValueOnce([[]])
-                .mockResolvedValueOnce([[]])
+            mockExecute.mockResolvedValueOnce([[]]).mockResolvedValueOnce([[]])
 
             const req = { requestId: "test", body: { uid: 999 } }
 
@@ -337,7 +345,10 @@ describe("services/navalclash/shopService", () => {
         })
 
         it("should return error if missing user", async () => {
-            const req = { requestId: "test", body: { its: [{ sku: "0", q: 1, p: 50 }] } }
+            const req = {
+                requestId: "test",
+                body: { its: [{ sku: "0", q: 1, p: 50 }] },
+            }
 
             await internalBuy(req, mockRes)
 
@@ -382,7 +393,12 @@ describe("services/navalclash/shopService", () => {
         })
 
         it("should return error if price mismatch", async () => {
-            const mockUser = { id: 1, name: "Player", uuid: "test-uuid", coins: 500 }
+            const mockUser = {
+                id: 1,
+                name: "Player",
+                uuid: "test-uuid",
+                coins: 500,
+            }
 
             mockConnection.execute
                 .mockResolvedValueOnce([[mockUser]]) // User found
@@ -407,7 +423,12 @@ describe("services/navalclash/shopService", () => {
         })
 
         it("should return error if insufficient coins", async () => {
-            const mockUser = { id: 1, name: "Player", uuid: "test-uuid", coins: 100 }
+            const mockUser = {
+                id: 1,
+                name: "Player",
+                uuid: "test-uuid",
+                coins: 100,
+            }
 
             mockConnection.execute
                 .mockResolvedValueOnce([[mockUser]]) // User found
@@ -445,7 +466,12 @@ describe("services/navalclash/shopService", () => {
 
             mockConnection.execute
                 .mockResolvedValueOnce([[mockUser]]) // User found
-                .mockResolvedValueOnce([[{ weapon_index: 0, price: 50 }, { weapon_index: 1, price: 75 }]]) // Shop items
+                .mockResolvedValueOnce([
+                    [
+                        { weapon_index: 0, price: 50 },
+                        { weapon_index: 1, price: 75 },
+                    ],
+                ]) // Shop items
                 .mockResolvedValueOnce([{ affectedRows: 1 }]) // Update coins
                 .mockResolvedValueOnce([{ affectedRows: 1 }]) // Insert inventory
                 .mockResolvedValueOnce([[{ item_id: "0", quantity: 3 }]]) // Get inventory
@@ -512,7 +538,12 @@ describe("services/navalclash/shopService", () => {
         })
 
         it("should return error for invalid SKU", async () => {
-            const mockUser = { id: 1, name: "Player", uuid: "test-uuid", coins: 500 }
+            const mockUser = {
+                id: 1,
+                name: "Player",
+                uuid: "test-uuid",
+                coins: 500,
+            }
 
             mockConnection.execute
                 .mockResolvedValueOnce([[mockUser]]) // User found

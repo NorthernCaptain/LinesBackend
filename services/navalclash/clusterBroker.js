@@ -154,7 +154,10 @@ const setupWorkers = new Set()
  */
 function setupWorkerHandlers(worker) {
     if (setupWorkers.has(worker.id)) {
-        logger.debug({ workerId: worker.id }, "Worker handlers already set up, skipping")
+        logger.debug(
+            { workerId: worker.id },
+            "Worker handlers already set up, skipping"
+        )
         return
     }
     setupWorkers.add(worker.id)
@@ -200,7 +203,10 @@ function setupMasterBroker() {
     }
 
     cluster.on("fork", (worker) => {
-        logger.debug({ workerId: worker.id }, "Setting up handlers for new worker")
+        logger.debug(
+            { workerId: worker.id },
+            "Setting up handlers for new worker"
+        )
         setupWorkerHandlers(worker)
     })
 

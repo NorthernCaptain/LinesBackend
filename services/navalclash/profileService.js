@@ -148,10 +148,9 @@ async function createExportUser(clientUser, version) {
             ]
         )
 
-        const [rows] = await conn.execute(
-            "SELECT * FROM users WHERE id = ?",
-            [result.insertId]
-        )
+        const [rows] = await conn.execute("SELECT * FROM users WHERE id = ?", [
+            result.insertId,
+        ])
         await conn.commit()
         return rows[0]
     } catch (error) {
@@ -221,7 +220,10 @@ async function exportProfile(req, res) {
             logger.info(ctx, "User not found by UUID, creating new profile")
             user = await createExportUser(clientUser, body.v)
             ctx.uid = user.id
-            logger.info({ ...ctx, pin: user.pin }, "New user created for export")
+            logger.info(
+                { ...ctx, pin: user.pin },
+                "New user created for export"
+            )
         } else {
             ctx.uid = user.id
 
@@ -371,7 +373,10 @@ async function syncProfile(req, res) {
                 if (ignoreErrors) {
                     return res.json({ type: "ok" })
                 }
-                return res.json({ type: "error", reason: "Failed to create user" })
+                return res.json({
+                    type: "error",
+                    reason: "Failed to create user",
+                })
             }
 
             ctx.uid = newUserId

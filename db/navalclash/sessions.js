@@ -73,7 +73,12 @@ function isAgentVersion(version) {
  * @param {Object} conn - Database connection (for transaction)
  * @returns {Promise<Object|null>} Waiting session or null
  */
-async function dbFindWaitingSession(excludeUserId, gameVariant, joinerVersion, conn) {
+async function dbFindWaitingSession(
+    excludeUserId,
+    gameVariant,
+    joinerVersion,
+    conn
+) {
     const db = conn || pool
     const joinerIsAgent = isAgentVersion(joinerVersion)
 
@@ -94,7 +99,12 @@ async function dbFindWaitingSession(excludeUserId, gameVariant, joinerVersion, c
                      ORDER BY gs.created_at ASC
                      LIMIT 1
                      FOR UPDATE`
-            params = [excludeUserId, gameVariant, AGENT_VERSION_MIN, AGENT_VERSION_MAX]
+            params = [
+                excludeUserId,
+                gameVariant,
+                AGENT_VERSION_MIN,
+                AGENT_VERSION_MAX,
+            ]
         } else {
             // Human joining - can match with anyone
             query = `SELECT gs.*, u.name as user_one_name

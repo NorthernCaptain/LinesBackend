@@ -5,6 +5,8 @@
  */
 
 const express = require("express")
+const { navalEncryption } = require("../middleware/navalEncryption")
+const { handshake } = require("../services/navalclash/handshakeService")
 
 /**
  * Creates and configures the Naval Clash router.
@@ -14,6 +16,15 @@ const express = require("express")
  */
 function router(app) {
     const r = express.Router()
+
+    // Parse binary bodies for encrypted requests
+    r.use(express.raw({ type: "application/octet-stream", limit: "1mb" }))
+
+    // Handshake uses RSA encryption (establishes AES key) - before middleware
+    r.post("/handshake", handshake)
+
+    // All other routes use AES encryption via middleware
+    r.use(navalEncryption)
 
     // Import services
     const {
@@ -45,7 +56,9 @@ function router(app) {
         userMarker,
         userAnswer,
     } = require("../services/navalclash/socialService")
-    const { getTopScores } = require("../services/navalclash/leaderboardService")
+    const {
+        getTopScores,
+    } = require("../services/navalclash/leaderboardService")
     const {
         getItemsList,
         getInventory,
@@ -103,10 +116,14 @@ function router(app) {
     // Debug/test endpoint for remote logging
     r.post("/echo", (req, res) => {
         const { device, tag, msg, ts } = req.body
-        const timestamp = ts ? new Date(ts).toISOString() : new Date().toISOString()
+        const timestamp = ts
+            ? new Date(ts).toISOString()
+            : new Date().toISOString()
         const deviceTag = device || "UNKNOWN"
         const logTag = tag || "LOG"
-        console.log(`[${timestamp}] [${deviceTag}] [${logTag}] ${msg || JSON.stringify(req.body)}`)
+        console.log(
+            `[${timestamp}] [${deviceTag}] [${logTag}] ${msg || JSON.stringify(req.body)}`
+        )
         res.json({ status: "ok" })
     })
 

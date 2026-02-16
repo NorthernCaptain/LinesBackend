@@ -322,6 +322,7 @@ async function joinExistingSession(conn, session, userId, version) {
             user_two_connected_at = NOW(3),
             version_two = ?,
             status = 1,
+            last_seen_two = NOW(3),
             updated_at = NOW(3)
          WHERE id = ? AND user_two_id IS NULL`,
         [userId, version, sessionIdStr]
@@ -378,8 +379,9 @@ async function createNewSession(
     // game_type: 0 = random, 1 = personal
     await conn.query(
         `INSERT INTO game_sessions
-            (id, user_one_id, user_one_connected_at, version_one, game_variant, game_type, target_rival_id, status)
-         VALUES (?, ?, NOW(3), ?, ?, ?, ?, 0)`,
+            (id, user_one_id, user_one_connected_at, version_one, game_variant,
+             game_type, target_rival_id, status, last_seen_one)
+         VALUES (?, ?, NOW(3), ?, ?, ?, ?, 0, NOW(3))`,
         [
             sessionIdStr,
             userId,
@@ -463,7 +465,7 @@ async function findOrCreateSession(conn, user, body) {
                    AND gs.user_two_id IS NULL
                    AND gs.user_one_id != ?
                    AND gs.game_variant = ?
-                   AND gs.updated_at > DATE_SUB(NOW(3), INTERVAL 2 MINUTE)
+                   AND gs.last_seen_one > DATE_SUB(NOW(3), INTERVAL 45 SECOND)
                    AND (gs.version_one < ? OR gs.version_one > ?)
                  ORDER BY gs.created_at ASC
                  LIMIT 1`,
@@ -479,7 +481,7 @@ async function findOrCreateSession(conn, user, body) {
                    AND gs.user_two_id IS NULL
                    AND gs.user_one_id != ?
                    AND gs.game_variant = ?
-                   AND gs.updated_at > DATE_SUB(NOW(3), INTERVAL 2 MINUTE)
+                   AND gs.last_seen_one > DATE_SUB(NOW(3), INTERVAL 45 SECOND)
                  ORDER BY gs.created_at ASC
                  LIMIT 1`,
                 [user.id, gameVariant]

@@ -378,9 +378,16 @@ async function dbUpdateLocalStats(conn, userId, clientUser) {
     const winsBluetooth = wa[1] || 0
     const winsPassplay = wa[3] || 0
 
+    // Stars are accumulated by the client across all game modes.
+    // Server only awards stars for web games, so the client's total
+    // is always the most up-to-date value. We take the max of client
+    // and server to avoid losing stars from either source.
+    const clientStars = clientUser.st || 0
+
     try {
-        // Update non-web stats and recalculate totals
+        // Update non-web stats, stars, and recalculate totals
         // Total = android + bluetooth + web (from server) + passplay
+        // Stars = max(client, server) to never lose stars from either side
         await db.execute(
             `UPDATE users SET
                 games_android = ?,
@@ -389,6 +396,7 @@ async function dbUpdateLocalStats(conn, userId, clientUser) {
                 wins_android = ?,
                 wins_bluetooth = ?,
                 wins_passplay = ?,
+                stars = GREATEST(stars, ?),
                 games = ? + ? + games_web + ?,
                 gameswon = ? + ? + wins_web + ?
              WHERE id = ?`,
@@ -399,6 +407,7 @@ async function dbUpdateLocalStats(conn, userId, clientUser) {
                 winsAndroid,
                 winsBluetooth,
                 winsPassplay,
+                clientStars,
                 gamesAndroid,
                 gamesBluetooth,
                 gamesPassplay,

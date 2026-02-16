@@ -204,20 +204,21 @@ describe("db/navalclash/users", () => {
     })
 
     describe("dbUpdateLocalStats", () => {
-        it("should update local stats from client data", async () => {
+        it("should update local stats and stars from client data", async () => {
             mockExecute.mockResolvedValue([{ affectedRows: 1 }])
 
             const clientUser = {
                 ga: [10, 5, 20, 3], // android, bt, web, passplay
                 wa: [8, 3, 15, 2],
+                st: 450, // stars
             }
 
             const result = await dbUpdateLocalStats(null, 1, clientUser)
 
             expect(result).toBe(true)
             expect(mockExecute).toHaveBeenCalledWith(
-                expect.stringContaining("games_android = ?"),
-                [10, 5, 3, 8, 3, 2, 10, 5, 3, 8, 3, 2, 1]
+                expect.stringContaining("stars = GREATEST(stars, ?)"),
+                [10, 5, 3, 8, 3, 2, 450, 10, 5, 3, 8, 3, 2, 1]
             )
         })
 
@@ -276,21 +277,22 @@ describe("db/navalclash/users", () => {
             expect(result).toBe(false)
         })
 
-        it("should handle missing array indices with defaults", async () => {
+        it("should handle missing array indices and stars with defaults", async () => {
             mockExecute.mockResolvedValue([{ affectedRows: 1 }])
 
             const clientUser = {
                 ga: [10], // only android
                 wa: [8, 3], // android, bt
+                // st not provided - should default to 0
             }
 
             const result = await dbUpdateLocalStats(null, 1, clientUser)
 
             expect(result).toBe(true)
-            // Missing indices should default to 0
+            // Missing indices should default to 0, stars defaults to 0
             expect(mockExecute).toHaveBeenCalledWith(
                 expect.any(String),
-                [10, 0, 0, 8, 3, 0, 10, 0, 0, 8, 3, 0, 1]
+                [10, 0, 0, 8, 3, 0, 0, 10, 0, 0, 8, 3, 0, 1]
             )
         })
     })

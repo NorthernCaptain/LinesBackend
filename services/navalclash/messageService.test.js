@@ -5,11 +5,17 @@
  */
 
 const mockExecute = jest.fn()
+const mockDbUpdatePlayerLastSeen = jest.fn().mockResolvedValue(true)
+const mockDbGetOpponentLastSeen = jest.fn().mockResolvedValue(null)
+const mockDbCloseStaleSession = jest.fn().mockResolvedValue(0)
 
 jest.mock("../../db/navalclash", () => ({
     pool: {
         execute: mockExecute,
     },
+    dbUpdatePlayerLastSeen: (...args) => mockDbUpdatePlayerLastSeen(...args),
+    dbGetOpponentLastSeen: (...args) => mockDbGetOpponentLastSeen(...args),
+    dbCloseStaleSession: (...args) => mockDbCloseStaleSession(...args),
 }))
 
 jest.mock("cluster", () => ({
@@ -26,6 +32,7 @@ const {
     deleteAcknowledgedMessages,
     getPendingPollCount,
     clearPendingPolls,
+    checkDeadOpponent,
 } = require("./messageService")
 
 describe("services/navalclash/messageService", () => {
@@ -134,6 +141,86 @@ describe("services/navalclash/messageService", () => {
         })
     })
 
+    describe("checkDeadOpponent", () => {
+        it("should return null for non-IN_PROGRESS session", async () => {
+            mockDbGetOpponentLastSeen.mockResolvedValueOnce({
+                status: 0,
+                opponent_last_seen: null,
+            })
+
+            const result = await checkDeadOpponent(1000n, 0, {})
+
+            expect(result).toBeNull()
+        })
+
+        it("should return null when opponent never polled (just joined)", async () => {
+            mockDbGetOpponentLastSeen.mockResolvedValueOnce({
+                status: 1,
+                opponent_last_seen: null,
+                user_one_id: 1,
+                user_two_id: 2,
+            })
+
+            const result = await checkDeadOpponent(1000n, 0, {})
+
+            expect(result).toBeNull()
+        })
+
+        it("should return null when opponent is alive", async () => {
+            mockDbGetOpponentLastSeen.mockResolvedValueOnce({
+                status: 1,
+                opponent_last_seen: new Date(), // Just now
+                user_one_id: 1,
+                user_two_id: 2,
+            })
+
+            const result = await checkDeadOpponent(1000n, 0, {})
+
+            expect(result).toBeNull()
+        })
+
+        it("should close session and return left message when opponent is dead", async () => {
+            const staleTime = new Date(Date.now() - 60000) // 60 seconds ago
+            mockDbGetOpponentLastSeen.mockResolvedValueOnce({
+                status: 1,
+                opponent_last_seen: staleTime,
+                user_one_id: 1,
+                user_two_id: 2,
+            })
+            mockDbCloseStaleSession.mockResolvedValueOnce(1)
+
+            const result = await checkDeadOpponent(1000n, 0, {})
+
+            expect(result).toBeTruthy()
+            expect(result.type).toBe("info")
+            expect(result.msg.m).toBe(5) // MSG.LEFT_SCREEN
+            expect(mockDbCloseStaleSession).toHaveBeenCalledWith(1000n, 9) // FINISHED_NOT_PINGABLE
+        })
+
+        it("should return null when session already closed by another path", async () => {
+            const staleTime = new Date(Date.now() - 60000)
+            mockDbGetOpponentLastSeen.mockResolvedValueOnce({
+                status: 1,
+                opponent_last_seen: staleTime,
+                user_one_id: 1,
+                user_two_id: 2,
+            })
+            mockDbCloseStaleSession.mockResolvedValueOnce(0) // Already closed
+
+            const result = await checkDeadOpponent(1000n, 0, {})
+
+            expect(result).toBeNull()
+        })
+
+        it("should return null when session not found", async () => {
+            mockDbGetOpponentLastSeen.mockResolvedValueOnce(null)
+
+            const result = await checkDeadOpponent(9999n, 0, {})
+
+            expect(result).toBeNull()
+        })
+    })
+
     describe("poll", () => {
         const mockRes = {
             json: jest.fn(),
@@ -154,15 +241,32 @@ describe("services/navalclash/messageService", () => {
             })
         })
 
+        it("should update player last_seen on each poll", async () => {
+            const mockMessage = {
+                msg_id: 5,
+                msg_type: "greeting",
+                body: JSON.stringify({ u: { name: "Test" } }),
+            }
+            mockExecute.mockResolvedValueOnce([[mockMessage]]) // fetch message
+
+            const req = { body: { sid: "1001" } }
+
+            await poll(req, mockRes)
+
+            // Player 1 (odd session ID), base session = 1000
+            expect(mockDbUpdatePlayerLastSeen).toHaveBeenCalledWith(
+                1000n,
+                1
+            )
+        })
+
         it("should return message immediately if available", async () => {
             const mockMessage = {
                 msg_id: 5,
                 msg_type: "greeting",
                 body: JSON.stringify({ u: { name: "Test" } }),
             }
-            mockExecute
-                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE game_sessions
-                .mockResolvedValueOnce([[mockMessage]]) // fetch message
+            mockExecute.mockResolvedValueOnce([[mockMessage]]) // fetch message
 
             const req = { body: { sid: "1001" } }
 
@@ -175,9 +279,31 @@ describe("services/navalclash/messageService", () => {
             })
         })
 
+        it("should check for dead opponent when no message available", async () => {
+            // No message available
+            mockExecute.mockResolvedValueOnce([[]]) // fetch message - empty
+            mockDbGetOpponentLastSeen.mockResolvedValueOnce({
+                status: 1,
+                opponent_last_seen: new Date(Date.now() - 60000), // 60s ago
+                user_one_id: 1,
+                user_two_id: 2,
+            })
+            mockDbCloseStaleSession.mockResolvedValueOnce(1)
+
+            const req = { body: { sid: "1001" } }
+
+            await poll(req, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: "info",
+                    msg: expect.objectContaining({ m: 5 }),
+                })
+            )
+        })
+
         it("should delete acknowledged messages if after is provided", async () => {
             mockExecute
-                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE game_sessions
                 .mockResolvedValueOnce([{ affectedRows: 2 }]) // delete
                 .mockResolvedValueOnce([
                     [{ msg_id: 10, msg_type: "ok", body: "{}" }],
@@ -194,7 +320,9 @@ describe("services/navalclash/messageService", () => {
         })
 
         it("should handle database errors", async () => {
-            mockExecute.mockRejectedValueOnce(new Error("DB error"))
+            mockDbUpdatePlayerLastSeen.mockRejectedValueOnce(
+                new Error("DB error")
+            )
 
             const req = { body: { sid: "1001" } }
 
@@ -238,6 +366,26 @@ describe("services/navalclash/messageService", () => {
             })
         })
 
+        it("should update player last_seen on send", async () => {
+            mockExecute.mockResolvedValueOnce([{ insertId: 123 }])
+
+            const req = {
+                body: {
+                    sid: "1000",
+                    msgType: "greeting",
+                    u: { name: "Player" },
+                },
+            }
+
+            await send(req, mockRes)
+
+            // Player 0 (even session ID), base session = 1000
+            expect(mockDbUpdatePlayerLastSeen).toHaveBeenCalledWith(
+                1000n,
+                0
+            )
+        })
+
         it("should send message and return ok with msgId", async () => {
             mockExecute.mockResolvedValueOnce([{ insertId: 123 }])
 
@@ -258,7 +406,9 @@ describe("services/navalclash/messageService", () => {
         })
 
         it("should handle database errors", async () => {
-            mockExecute.mockRejectedValueOnce(new Error("DB error"))
+            mockDbUpdatePlayerLastSeen.mockRejectedValueOnce(
+                new Error("DB error")
+            )
 
             const req = {
                 body: { sid: "1000", msgType: "greeting" },

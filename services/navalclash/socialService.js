@@ -715,10 +715,13 @@ async function userMarker(req, res) {
                     logger.info(ctx, "Session closed (player left matchmaking)")
                 }
             } else {
-                // Keep session fresh
+                // Keep session fresh — update per-player last_seen
+                const player = Number(sessionId & 1n)
+                const column =
+                    player === 0 ? "last_seen_one" : "last_seen_two"
                 await pool.execute(
                     `UPDATE game_sessions
-                     SET updated_at = NOW(3)
+                     SET ${column} = NOW(3)
                      WHERE id = ? AND status IN (0, 1)`,
                     [baseSessionId.toString()]
                 )

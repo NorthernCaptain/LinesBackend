@@ -4,11 +4,16 @@
  * All rights reserved.
  */
 
-const { pool } = require("../../db/navalclash")
+const {
+    pool,
+    dbUpdatePlayerLastSeen,
+    dbGetOpponentLastSeen,
+    dbCloseStaleSession,
+} = require("../../db/navalclash")
 const cluster = require("cluster")
 const { v4: uuid } = require("uuid")
 const { logger } = require("../../utils/logger")
-const { TIMING } = require("./constants")
+const { TIMING, SESSION_STATUS, MSG } = require("./constants")
 
 const pendingPolls = new Map()
 
@@ -260,6 +265,61 @@ function setupLongPoll(res, sessionId, afterMsgId, clientPollId, requestId) {
 }
 
 /**
+ * Checks if the opponent is dead (not polling) in an IN_PROGRESS session.
+ * If the opponent's last_seen exceeds SESSION_ALIVE_MS, closes the session
+ * and returns a response payload for the polling player.
+ *
+ * @param {BigInt} baseSessionId - Base session ID (even)
+ * @param {number} player - Current player number (0 or 1)
+ * @param {Object} ctx - Logging context
+ * @returns {Promise<Object|null>} Response payload if opponent is dead, null otherwise
+ */
+async function checkDeadOpponent(baseSessionId, player, ctx) {
+    const sessionInfo = await dbGetOpponentLastSeen(baseSessionId, player)
+    if (!sessionInfo || sessionInfo.status !== SESSION_STATUS.IN_PROGRESS) {
+        return null
+    }
+
+    const opponentLastSeen = sessionInfo.opponent_last_seen
+    if (!opponentLastSeen) {
+        // Opponent never polled (just joined) — give them time
+        return null
+    }
+
+    const elapsed = Date.now() - new Date(opponentLastSeen).getTime()
+    if (elapsed <= TIMING.SESSION_ALIVE_MS) {
+        return null
+    }
+
+    // Opponent is dead — close the session
+    logger.info(
+        { ...ctx, elapsed, threshold: TIMING.SESSION_ALIVE_MS },
+        "Dead opponent detected during poll, closing session"
+    )
+
+    const affected = await dbCloseStaleSession(
+        baseSessionId,
+        SESSION_STATUS.FINISHED_NOT_PINGABLE
+    )
+
+    if (affected === 0) {
+        // Session was already closed by another path
+        return null
+    }
+
+    // Return a "left" info message so the client knows the opponent left
+    return {
+        type: "info",
+        msg: {
+            type: "msg",
+            m: MSG.LEFT_SCREEN,
+            p: ["self"],
+            c: false,
+        },
+    }
+}
+
+/**
  * Poll endpoint - long-polls for messages.
  * Session ID already contains player info in last bit.
  *
@@ -284,12 +344,11 @@ async function poll(req, res) {
     logger.debug({ ...ctx, after: afterMsgId }, "Poll request received")
 
     try {
-        // Keep session alive - update updated_at so matchmaking can find waiting sessions
-        await pool.execute(
-            `UPDATE game_sessions SET updated_at = NOW(3)
-             WHERE id = ? AND status = 0`,
-            [toBaseSessionId(sessionId).toString()]
-        )
+        const baseSessionId = toBaseSessionId(sessionId)
+        const player = Number(sessionId & 1n)
+
+        // Update per-player last_seen (also refreshes updated_at via ON UPDATE)
+        await dbUpdatePlayerLastSeen(baseSessionId, player)
 
         // Acknowledge previously received messages
         if (afterMsgId > 0n) {
@@ -310,6 +369,16 @@ async function poll(req, res) {
                 msgId: message.msg_id.toString(),
                 ...message.body,
             })
+        }
+
+        // No message — check if opponent is dead (IN_PROGRESS sessions only)
+        const deadOpponent = await checkDeadOpponent(
+            baseSessionId,
+            player,
+            ctx
+        )
+        if (deadOpponent) {
+            return res.json(deadOpponent)
         }
 
         // No message available, set up long poll
@@ -395,6 +464,12 @@ async function send(req, res) {
 
     try {
         const sessionId = BigInt(sid)
+        const baseSessionId = sessionId & ~1n
+        const player = Number(sessionId & 1n)
+
+        // Update sender's last_seen (also refreshes updated_at)
+        await dbUpdatePlayerLastSeen(baseSessionId, player)
+
         const msgId = await sendMessage(sessionId, msgType, body)
 
         logger.info({ ...ctx, msgId }, `Message ${msgType} sent successfully`)
@@ -442,4 +517,5 @@ module.exports = {
     // Exported for testing
     handleWake,
     handleCancel,
+    checkDeadOpponent,
 }

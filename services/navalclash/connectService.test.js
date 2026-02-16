@@ -266,7 +266,7 @@ describe("services/navalclash/connectService", () => {
             })
         })
 
-        it("should create new session for new player", async () => {
+        it("should create new session with last_seen_one", async () => {
             const req = {
                 body: {
                     type: "connect",
@@ -312,11 +312,14 @@ describe("services/navalclash/connectService", () => {
                     u: expect.objectContaining({ n: "NewPlayer" }),
                 })
             )
+            // Verify session INSERT includes last_seen_one
+            const insertCall = mockConnection.query.mock.calls[0]
+            expect(insertCall[0]).toContain("last_seen_one")
             expect(mockConnection.commit).toHaveBeenCalled()
             expect(mockConnection.release).toHaveBeenCalled()
         })
 
-        it("should join existing session when waiting session found", async () => {
+        it("should join existing session with last_seen_two", async () => {
             const req = {
                 body: {
                     type: "connect",
@@ -364,6 +367,59 @@ describe("services/navalclash/connectService", () => {
                     type: "connected",
                     sid: "1001", // Base 1000 + 1 for player 1
                 })
+            )
+            // Verify session UPDATE includes last_seen_two
+            const updateCall = mockConnection.query.mock.calls[0]
+            expect(updateCall[0]).toContain("last_seen_two")
+        })
+
+        it("should use last_seen_one for matchmaking staleness check", async () => {
+            const req = {
+                body: {
+                    type: "connect",
+                    player: "TestPlayer",
+                    uuuid: "test-uuid",
+                    var: 1,
+                },
+            }
+
+            const mockUser = {
+                id: 10,
+                name: "TestPlayer",
+                pin: 1234,
+                face: 0,
+                rank: 0,
+                stars: 0,
+                games: 0,
+                gameswon: 0,
+                coins: 0,
+                isbanned: 0,
+            }
+
+            mockConnection.execute
+                .mockResolvedValueOnce([]) // SET TRANSACTION ISOLATION LEVEL
+                .mockResolvedValueOnce([[mockUser]]) // find user
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // update login
+                .mockResolvedValueOnce([{ affectedRows: 0 }]) // terminate
+                .mockResolvedValueOnce([[{ game_variant: 1 }]]) // lock
+                .mockResolvedValueOnce([[]]) // find waiting - none
+
+            mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }])
+
+            await connect(req, mockRes)
+
+            // Find the matchmaking query (should use last_seen_one, not updated_at)
+            const matchmakingCall = mockConnection.execute.mock.calls.find(
+                (call) =>
+                    call[0] &&
+                    call[0].includes("status = 0") &&
+                    call[0].includes("user_two_id IS NULL")
+            )
+            expect(matchmakingCall).toBeTruthy()
+            expect(matchmakingCall[0]).toContain("last_seen_one")
+            expect(matchmakingCall[0]).toContain("INTERVAL 45 SECOND")
+            expect(matchmakingCall[0]).not.toContain(
+                "updated_at > DATE_SUB"
             )
         })
 

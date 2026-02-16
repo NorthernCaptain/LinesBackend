@@ -79,11 +79,17 @@ async function purgeStaleSessions(purgeThresholdSec) {
 
         // Clean up old messages from closed sessions (older than 1 hour)
         await pool.execute(
-            `DELETE sm FROM session_messages sm
-             LEFT JOIN game_sessions gs ON gs.id = (sm.sender_session_id & ~1)
-             WHERE gs.id IS NULL
-                OR (gs.status > 1 AND gs.finished_at < DATE_SUB(NOW(), INTERVAL 1 HOUR))
-             LIMIT 500`
+            `DELETE FROM session_messages
+             WHERE msg_id IN (
+                 SELECT msg_id FROM (
+                     SELECT sm.msg_id
+                     FROM session_messages sm
+                     LEFT JOIN game_sessions gs ON gs.id = (sm.sender_session_id & ~1)
+                     WHERE gs.id IS NULL
+                        OR (gs.status > 1 AND gs.finished_at < DATE_SUB(NOW(), INTERVAL 1 HOUR))
+                     LIMIT 500
+                 ) tmp
+             )`
         )
     } catch (error) {
         console.error("Session purge error:", error.message)

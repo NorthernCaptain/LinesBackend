@@ -142,7 +142,7 @@ describe("services/navalclash/messageService", () => {
     })
 
     describe("checkDeadOpponent", () => {
-        it("should return null for non-IN_PROGRESS session", async () => {
+        it("should return null for WAITING session", async () => {
             mockDbGetOpponentLastSeen.mockResolvedValueOnce({
                 status: 0,
                 opponent_last_seen: null,
@@ -151,6 +151,36 @@ describe("services/navalclash/messageService", () => {
             const result = await checkDeadOpponent(1000n, 0, {})
 
             expect(result).toBeNull()
+        })
+
+        it("should return errcode 5 for closed session (FINISHED_NOT_PINGABLE)", async () => {
+            mockDbGetOpponentLastSeen.mockResolvedValueOnce({
+                status: 9, // FINISHED_NOT_PINGABLE
+                opponent_last_seen: null,
+            })
+
+            const result = await checkDeadOpponent(1000n, 0, {})
+
+            expect(result).toEqual({
+                type: "error",
+                errcode: 5,
+                reason: "Session terminated",
+            })
+        })
+
+        it("should return errcode 5 for closed session (FINISHED_OK)", async () => {
+            mockDbGetOpponentLastSeen.mockResolvedValueOnce({
+                status: 10, // FINISHED_OK
+                opponent_last_seen: null,
+            })
+
+            const result = await checkDeadOpponent(1000n, 0, {})
+
+            expect(result).toEqual({
+                type: "error",
+                errcode: 5,
+                reason: "Session terminated",
+            })
         })
 
         it("should return null when opponent never polled (just joined)", async () => {

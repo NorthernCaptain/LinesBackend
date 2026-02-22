@@ -16,6 +16,7 @@ const { logger } = require("../../utils/logger")
 const {
     validateWeaponPlacement,
     trackWeaponPlacement,
+    countWeaponsByType,
     trackRadarUsage,
     trackShuffleUsage,
     consumeLoserWeapons,
@@ -651,6 +652,25 @@ async function fieldInfo(req, res) {
             errcode: 5,
             reason: "Session not found",
         })
+    }
+
+    // Extract weapons from field data and track them for consumption at game end.
+    // The client embeds weapons in fldinfo.json.weap (Dutch, mines, stealth, etc.)
+    // rather than sending a separate /wpl for initial placement.
+    if (json.weap && Array.isArray(json.weap) && json.weap.length > 0) {
+        const weaponCounts = countWeaponsByType(json.weap)
+        if (Object.keys(weaponCounts).length > 0) {
+            await trackWeaponPlacement(
+                session.baseSessionId,
+                session.player,
+                weaponCounts,
+                ctx
+            )
+            logger.debug(
+                { ...ctx, player: session.player, weaponCounts },
+                "Weapons extracted from fldinfo and tracked"
+            )
+        }
     }
 
     // Get both players' ranks to calculate bonus values

@@ -276,7 +276,21 @@ function setupLongPoll(res, sessionId, afterMsgId, clientPollId, requestId) {
  */
 async function checkDeadOpponent(baseSessionId, player, ctx) {
     const sessionInfo = await dbGetOpponentLastSeen(baseSessionId, player)
-    if (!sessionInfo || sessionInfo.status !== SESSION_STATUS.IN_PROGRESS) {
+    if (!sessionInfo) {
+        return null
+    }
+
+    // Session already closed — tell client to stop polling and reconnect
+    if (sessionInfo.status > SESSION_STATUS.IN_PROGRESS) {
+        logger.info(
+            { ...ctx, status: sessionInfo.status },
+            "Session closed, sending errcode 5 to trigger client reconnect"
+        )
+        return { type: "error", errcode: 5, reason: "Session terminated" }
+    }
+
+    // Not yet in progress (WAITING) — keep polling normally
+    if (sessionInfo.status !== SESSION_STATUS.IN_PROGRESS) {
         return null
     }
 

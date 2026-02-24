@@ -123,6 +123,8 @@ describe("services/navalclash/socialService", () => {
                 l: "--",
                 g: 30,
                 gw: 15,
+                gp: 0,
+                iw: 0,
                 d: "",
                 v: 0,
                 s: 0,

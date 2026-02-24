@@ -297,8 +297,9 @@ describe("services/navalclash/connectService", () => {
                 .mockResolvedValueOnce([{ affectedRows: 1 }]) // update PIN
                 .mockResolvedValueOnce([[mockUser]]) // fetch created user
                 .mockResolvedValueOnce([{ affectedRows: 0 }]) // terminate old sessions
-                .mockResolvedValueOnce([[{ game_variant: 1 }]]) // matchmaking lock SELECT FOR UPDATE
-                .mockResolvedValueOnce([[]]) // find waiting session
+                .mockResolvedValueOnce([[{ game_variant: 1 }]]) // matchmaking lock
+                .mockResolvedValueOnce([[]]) // personal session targeting me - none
+                .mockResolvedValueOnce([[]]) // random waiting session - none
 
             // Session creation uses query() instead of execute() for BigInt
             mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }])
@@ -347,6 +348,7 @@ describe("services/navalclash/connectService", () => {
                 user_one_id: 5,
                 user_one_name: "Player1",
                 status: 0,
+                target_rival_id: null,
             }
 
             mockConnection.execute
@@ -354,8 +356,9 @@ describe("services/navalclash/connectService", () => {
                 .mockResolvedValueOnce([[mockUser]]) // find user
                 .mockResolvedValueOnce([{ affectedRows: 1 }]) // update login
                 .mockResolvedValueOnce([{ affectedRows: 0 }]) // terminate old sessions
-                .mockResolvedValueOnce([[{ game_variant: 1 }]]) // matchmaking lock SELECT FOR UPDATE
-                .mockResolvedValueOnce([[waitingSession]]) // find waiting session
+                .mockResolvedValueOnce([[{ game_variant: 1 }]]) // matchmaking lock
+                .mockResolvedValueOnce([[]]) // personal session targeting me - none
+                .mockResolvedValueOnce([[waitingSession]]) // random waiting session - found
 
             // Join session uses query() instead of execute() for BigInt
             mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }])
@@ -402,18 +405,20 @@ describe("services/navalclash/connectService", () => {
                 .mockResolvedValueOnce([{ affectedRows: 1 }]) // update login
                 .mockResolvedValueOnce([{ affectedRows: 0 }]) // terminate
                 .mockResolvedValueOnce([[{ game_variant: 1 }]]) // lock
-                .mockResolvedValueOnce([[]]) // find waiting - none
+                .mockResolvedValueOnce([[]]) // personal targeting me - none
+                .mockResolvedValueOnce([[]]) // random waiting - none
 
             mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }])
 
             await connect(req, mockRes)
 
-            // Find the matchmaking query (should use last_seen_one, not updated_at)
+            // Find the random matchmaking query (should use last_seen_one)
             const matchmakingCall = mockConnection.execute.mock.calls.find(
                 (call) =>
                     call[0] &&
                     call[0].includes("status = 0") &&
-                    call[0].includes("user_two_id IS NULL")
+                    call[0].includes("user_two_id IS NULL") &&
+                    call[0].includes("target_rival_id IS NULL")
             )
             expect(matchmakingCall).toBeTruthy()
             expect(matchmakingCall[0]).toContain("last_seen_one")
@@ -476,8 +481,9 @@ describe("services/navalclash/connectService", () => {
                 .mockResolvedValueOnce([{ affectedRows: 1 }]) // link user_devices
                 .mockResolvedValueOnce([{ affectedRows: 1 }]) // update last_device_id
                 .mockResolvedValueOnce([{ affectedRows: 0 }]) // terminate old sessions
-                .mockResolvedValueOnce([[{ game_variant: 1 }]]) // matchmaking lock SELECT FOR UPDATE
-                .mockResolvedValueOnce([[]]) // find waiting session
+                .mockResolvedValueOnce([[{ game_variant: 1 }]]) // matchmaking lock
+                .mockResolvedValueOnce([[]]) // personal session targeting me - none
+                .mockResolvedValueOnce([[]]) // random waiting session - none
 
             // Session creation uses query() instead of execute() for BigInt
             mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }])
@@ -487,6 +493,343 @@ describe("services/navalclash/connectService", () => {
             expect(mockRes.json).toHaveBeenCalledWith(
                 expect.objectContaining({
                     type: "connected",
+                })
+            )
+        })
+    })
+
+    describe("personal game matchmaking (rematch)", () => {
+        const mockRes = {
+            json: jest.fn(),
+        }
+
+        const mockUser = {
+            id: 10,
+            name: "Player",
+            pin: 1234,
+            face: 0,
+            rank: 5,
+            stars: 10,
+            games: 20,
+            gameswon: 10,
+            coins: 100,
+            isbanned: 0,
+        }
+
+        /** Sets up standard execute mocks for an existing user connecting. */
+        function setupUserMocks() {
+            mockConnection.execute
+                .mockResolvedValueOnce([]) // SET TRANSACTION ISOLATION LEVEL
+                .mockResolvedValueOnce([[mockUser]]) // find user
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // update login
+                .mockResolvedValueOnce([{ affectedRows: 0 }]) // terminate old sessions
+                .mockResolvedValueOnce([[{ game_variant: 1 }]]) // matchmaking lock
+        }
+
+        beforeEach(() => {
+            mockRes.json.mockClear()
+        })
+
+        it("should join rival's personal session (mutual rematch)", async () => {
+            const req = {
+                body: {
+                    type: "connect",
+                    player: "Player",
+                    uuuid: "player-uuid",
+                    var: 1,
+                    rival: { i: 42 },
+                },
+            }
+
+            const rivalSession = {
+                id: "2000",
+                user_one_id: 42,
+                user_one_name: "Rival",
+                status: 0,
+                target_rival_id: 10, // rival is targeting us
+            }
+
+            setupUserMocks()
+            mockConnection.execute.mockResolvedValueOnce([
+                [rivalSession],
+            ]) // find rival's session
+
+            mockConnection.query.mockResolvedValueOnce([
+                { affectedRows: 1 },
+            ])
+
+            await connect(req, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: "connected",
+                    sid: "2001", // joined as player 1
+                })
+            )
+        })
+
+        it("should join rival's random session (personal targets random)", async () => {
+            const req = {
+                body: {
+                    type: "connect",
+                    player: "Player",
+                    uuuid: "player-uuid",
+                    var: 1,
+                    rival: { i: 42 },
+                },
+            }
+
+            const rivalRandomSession = {
+                id: "3000",
+                user_one_id: 42,
+                user_one_name: "Rival",
+                status: 0,
+                target_rival_id: null, // rival is waiting for anyone
+            }
+
+            setupUserMocks()
+            mockConnection.execute.mockResolvedValueOnce([
+                [rivalRandomSession],
+            ]) // find rival's session
+
+            mockConnection.query.mockResolvedValueOnce([
+                { affectedRows: 1 },
+            ])
+
+            await connect(req, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: "connected",
+                    sid: "3001",
+                })
+            )
+        })
+
+        it("should create personal session when rival is not waiting", async () => {
+            const req = {
+                body: {
+                    type: "connect",
+                    player: "Player",
+                    uuuid: "player-uuid",
+                    var: 1,
+                    rival: { i: 42 },
+                },
+            }
+
+            setupUserMocks()
+            mockConnection.execute.mockResolvedValueOnce([
+                [],
+            ]) // rival not waiting
+
+            mockConnection.query.mockResolvedValueOnce([
+                { affectedRows: 1 },
+            ])
+
+            await connect(req, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: "connected",
+                    sid: expect.any(String),
+                })
+            )
+            // Verify session was created with target_rival_id
+            const insertCall = mockConnection.query.mock.calls[0]
+            expect(insertCall[0]).toContain("target_rival_id")
+            expect(insertCall[1]).toContain(42)
+        })
+
+        it("should not join rival's session targeting someone else", async () => {
+            const req = {
+                body: {
+                    type: "connect",
+                    player: "Player",
+                    uuuid: "player-uuid",
+                    var: 1,
+                    rival: { i: 42 },
+                },
+            }
+
+            // Rival has a session but targeting user 99, not us (10).
+            // The query uses (target_rival_id IS NULL OR target_rival_id = ?),
+            // so this session would NOT be returned by the DB.
+            setupUserMocks()
+            mockConnection.execute.mockResolvedValueOnce([
+                [],
+            ]) // find rival's session - none matching
+
+            mockConnection.query.mockResolvedValueOnce([
+                { affectedRows: 1 },
+            ])
+
+            await connect(req, mockRes)
+
+            // Should create new personal session, not join
+            expect(mockRes.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: "connected",
+                    sid: expect.any(String),
+                })
+            )
+            const insertCall = mockConnection.query.mock.calls[0]
+            expect(insertCall[0]).toContain("INSERT INTO game_sessions")
+        })
+
+        it("should pull random player into personal session targeting them", async () => {
+            const req = {
+                body: {
+                    type: "connect",
+                    player: "Player",
+                    uuuid: "player-uuid",
+                    var: 1,
+                    // No rival - random game
+                },
+            }
+
+            const personalForMe = {
+                id: "4000",
+                user_one_id: 42,
+                user_one_name: "SomeoneWaitingForMe",
+                status: 0,
+                target_rival_id: 10, // targeting our user ID
+            }
+
+            setupUserMocks()
+            mockConnection.execute.mockResolvedValueOnce([
+                [personalForMe],
+            ]) // personal session targeting me - found!
+
+            mockConnection.query.mockResolvedValueOnce([
+                { affectedRows: 1 },
+            ])
+
+            await connect(req, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: "connected",
+                    sid: "4001",
+                })
+            )
+        })
+
+        it("should exclude personal sessions from random matchmaking", async () => {
+            const req = {
+                body: {
+                    type: "connect",
+                    player: "Player",
+                    uuuid: "player-uuid",
+                    var: 1,
+                },
+            }
+
+            setupUserMocks()
+            mockConnection.execute
+                .mockResolvedValueOnce([[]]) // personal targeting me - none
+                .mockResolvedValueOnce([[]]) // random waiting - none
+
+            mockConnection.query.mockResolvedValueOnce([
+                { affectedRows: 1 },
+            ])
+
+            await connect(req, mockRes)
+
+            // Find the random matchmaking query and verify it excludes personal sessions
+            const randomQuery = mockConnection.execute.mock.calls.find(
+                (call) =>
+                    call[0] &&
+                    call[0].includes("target_rival_id IS NULL") &&
+                    call[0].includes("user_one_id != ?")
+            )
+            expect(randomQuery).toBeTruthy()
+            expect(randomQuery[0]).toContain("target_rival_id IS NULL")
+        })
+
+        it("should match agent to personal session targeting it (agent rematch)", async () => {
+            const req = {
+                body: {
+                    type: "connect",
+                    player: "AgentBot",
+                    uuuid: "agent-uuid",
+                    var: 1,
+                    v: 2100, // agent version
+                },
+            }
+
+            const agentUser = {
+                ...mockUser,
+                id: 99,
+                name: "AgentBot",
+            }
+
+            const personalForAgent = {
+                id: "5000",
+                user_one_id: 10,
+                user_one_name: "HumanPlayer",
+                status: 0,
+                target_rival_id: 99, // human targeting this agent
+            }
+
+            mockConnection.execute
+                .mockResolvedValueOnce([]) // SET TRANSACTION ISOLATION LEVEL
+                .mockResolvedValueOnce([[agentUser]]) // find user
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // update login
+                .mockResolvedValueOnce([{ affectedRows: 0 }]) // terminate
+                .mockResolvedValueOnce([[{ game_variant: 1 }]]) // lock
+                .mockResolvedValueOnce([[personalForAgent]]) // personal targeting agent
+
+            mockConnection.query.mockResolvedValueOnce([
+                { affectedRows: 1 },
+            ])
+
+            await connect(req, mockRes)
+
+            // Agent should join the personal session targeting it
+            expect(mockRes.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: "connected",
+                    sid: "5001",
+                })
+            )
+        })
+
+        it("should let human rematch a specific agent", async () => {
+            const req = {
+                body: {
+                    type: "connect",
+                    player: "HumanPlayer",
+                    uuuid: "human-uuid",
+                    var: 1,
+                    rival: { i: 99 }, // targeting specific agent
+                },
+            }
+
+            const agentSession = {
+                id: "6000",
+                user_one_id: 99,
+                user_one_name: "AgentBot",
+                status: 0,
+                target_rival_id: null, // agent waiting for anyone
+                version_one: 2100,
+            }
+
+            setupUserMocks()
+            mockConnection.execute.mockResolvedValueOnce([
+                [agentSession],
+            ]) // found agent's session
+
+            mockConnection.query.mockResolvedValueOnce([
+                { affectedRows: 1 },
+            ])
+
+            await connect(req, mockRes)
+
+            // Human should join agent's session directly
+            expect(mockRes.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: "connected",
+                    sid: "6001",
                 })
             )
         })

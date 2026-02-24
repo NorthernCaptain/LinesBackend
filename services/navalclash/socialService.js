@@ -50,6 +50,9 @@ function serializeRival(row) {
         v: row.version || 0, // Version
         f: row.face || 0, // Face/avatar
         s: lastSeenSecondsAgo, // Last seen (seconds ago)
+        gp: row.gp || 0, // Game played timestamp (seconds) - overridden by callers with real data
+        iw: row.iw || 0, // I won flag - overridden by callers with real data
+        t: 0,
         uid: row.uuid || "", // UUID
     }
 }
@@ -202,12 +205,22 @@ async function getRivals(req, res) {
         const [rows] = await pool.execute(
             `SELECT ul.list_type, ul.rival_id,
                     u.id, u.name, u.face, u.rank, u.stars, u.games, u.gameswon,
-                    u.uuid, u.status, u.lang, u.version, u.updated_at as lastseen
+                    u.uuid, u.status, u.lang, u.version, u.updated_at as lastseen,
+                    lg.played_at, lg.winner_id
              FROM userlists ul
              JOIN users u ON u.id = ul.rival_id
+             LEFT JOIN LATERAL (
+                 SELECT gs.created_at as played_at, gs.winner_id
+                 FROM game_sessions gs
+                 WHERE ((gs.user_one_id = ? AND gs.user_two_id = ul.rival_id)
+                    OR  (gs.user_two_id = ? AND gs.user_one_id = ul.rival_id))
+                   AND gs.status >= 10
+                 ORDER BY gs.created_at DESC
+                 LIMIT 1
+             ) lg ON TRUE
              WHERE ul.user_id = ?
              ORDER BY ul.list_type, u.name`,
-            [user.id]
+            [user.id, user.id, user.id]
         )
 
         // Return all rivals with their type (mapped to client constants)
@@ -218,6 +231,10 @@ async function getRivals(req, res) {
                 row.list_type === LIST_TYPE.FRIENDS
                     ? RIVAL_TYPE.SAVED
                     : RIVAL_TYPE.REJECTED,
+            gp: row.played_at
+                ? Math.floor(new Date(row.played_at).getTime() / 1000)
+                : 0,
+            iw: row.winner_id === user.id ? 1 : 0,
         }))
 
         logger.debug(ctx, `Returning ${rivals.length} rivals`)
@@ -414,6 +431,11 @@ async function getOnlineUsers(req, res) {
             v: row.version || 0,
             f: row.face || 0,
             s: row.last_seen, // -1=playing, -2=setup, >0=seconds ago
+            gp: row.created_at
+                ? Math.floor(new Date(row.created_at).getTime() / 1000)
+                : 0, // Session creation time (seconds)
+            iw: 0, // No win/loss for active sessions
+            t: 0,
             uid: row.uuid || "",
             sid: row.is_playing ? null : row.session_id.toString(), // Session ID only for waiting users
             ip: row.is_playing, // Is playing flag

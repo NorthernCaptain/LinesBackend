@@ -65,7 +65,9 @@ function isAgentVersion(version) {
 }
 
 /**
- * Finds a waiting session for matchmaking.
+ * Finds a waiting session for random matchmaking.
+ * Excludes personal sessions (target_rival_id IS NOT NULL) to prevent
+ * random players from joining sessions meant for a specific rival.
  * Prevents agent vs agent matchmaking - agents can only play against humans.
  *
  * @param {number} excludeUserId - User ID to exclude from matching
@@ -87,7 +89,7 @@ async function dbFindWaitingSession(
         let query, params
 
         if (joinerIsAgent) {
-            // Agent joining - only match with humans (non-agent versions)
+            // Agent joining - only match with humans, exclude personal sessions
             query = `SELECT gs.*, u.name as user_one_name
                      FROM game_sessions gs
                      JOIN users u ON u.id = gs.user_one_id
@@ -95,6 +97,7 @@ async function dbFindWaitingSession(
                        AND gs.user_two_id IS NULL
                        AND gs.user_one_id != ?
                        AND gs.game_variant = ?
+                       AND gs.target_rival_id IS NULL
                        AND gs.last_seen_one > DATE_SUB(NOW(3), INTERVAL 45 SECOND)
                        AND (gs.version_one < ? OR gs.version_one > ?)
                      ORDER BY gs.created_at ASC
@@ -107,7 +110,7 @@ async function dbFindWaitingSession(
                 AGENT_VERSION_MAX,
             ]
         } else {
-            // Human joining - can match with anyone
+            // Human joining - match with anyone, exclude personal sessions
             query = `SELECT gs.*, u.name as user_one_name
                      FROM game_sessions gs
                      JOIN users u ON u.id = gs.user_one_id
@@ -115,6 +118,7 @@ async function dbFindWaitingSession(
                        AND gs.user_two_id IS NULL
                        AND gs.user_one_id != ?
                        AND gs.game_variant = ?
+                       AND gs.target_rival_id IS NULL
                        AND gs.last_seen_one > DATE_SUB(NOW(3), INTERVAL 45 SECOND)
                      ORDER BY gs.created_at ASC
                      LIMIT 1

@@ -234,8 +234,8 @@ const RANK_THRESHOLDS = RANK_THRESHOLDS_PAID
 // =============================================================================
 
 const TIMING = {
-    // Long polling timeout for /receive endpoint (20 seconds)
-    POLL_TIMEOUT_MS: 20000,
+    // Long polling timeout for /receive endpoint (15 seconds)
+    POLL_TIMEOUT_MS: 15000,
 
     // Config cache TTL (1 hour)
     CACHE_TTL_MS: 60 * 60 * 1000,
@@ -246,9 +246,9 @@ const TIMING = {
     // Rival status considered "red" (disconnected) after 11 seconds
     RIVAL_RED_TIME_MS: 11000,
 
-    // Player considered alive if last_seen within this threshold (45 seconds)
+    // Player considered alive if last_seen within this threshold (55 seconds)
     // Used for: matchmaking filter, dead-opponent detection during poll
-    SESSION_ALIVE_MS: 45 * 1000,
+    SESSION_ALIVE_MS: 55 * 1000,
 
     // Session purged by background job after this time (120 seconds)
     // Applies to both WAITING and IN_PROGRESS sessions

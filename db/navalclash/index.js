@@ -13,6 +13,8 @@ const social = require("./social")
 const leaderboard = require("./leaderboard")
 const shop = require("./shop")
 const training = require("./training")
+const weapons = require("./weapons")
+const keys = require("./keys")
 
 module.exports = {
     pool,
@@ -24,4 +26,6 @@ module.exports = {
     ...leaderboard,
     ...shop,
     ...training,
+    ...weapons,
+    ...keys,
 }

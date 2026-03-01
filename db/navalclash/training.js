@@ -53,7 +53,12 @@ async function dbLogTrainingShot(data, ctx) {
             ]
         )
         logger.debug(
-            { ...ctx, shotNum: data.shotNumber, x: data.targetX, y: data.targetY },
+            {
+                ...ctx,
+                shotNum: data.shotNumber,
+                x: data.targetX,
+                y: data.targetY,
+            },
             "Training shot logged"
         )
         return true
@@ -245,7 +250,10 @@ async function dbFinalizeTrainingGame(gameId, ctx) {
                     fieldJsonSample:
                         typeof field.field_json === "string"
                             ? field.field_json.substring(0, 500)
-                            : JSON.stringify(field.field_json).substring(0, 500),
+                            : JSON.stringify(field.field_json).substring(
+                                  0,
+                                  500
+                              ),
                 },
                 "Processing field data for player"
             )
@@ -275,7 +283,10 @@ async function dbFinalizeTrainingGame(gameId, ctx) {
         }
 
         if (!playerOneShips || !playerTwoShips) {
-            logger.warn(ctx, "Could not extract ships from field data, skipping")
+            logger.warn(
+                ctx,
+                "Could not extract ships from field data, skipping"
+            )
             return false
         }
 

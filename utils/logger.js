@@ -80,7 +80,9 @@ function logWithContext(level, ctx, message, ...args) {
 
     const prefix = `${formatTimestamp()} ${level.substring(0, 3)}`
     const context = formatContext(ctx)
-    const fullMessage = context ? `${prefix} ${context} ${message}` : `${prefix} ${message}`
+    const fullMessage = context
+        ? `${prefix} ${context} ${message}`
+        : `${prefix} ${message}`
 
     switch (level) {
         case "ERROR":
@@ -105,7 +107,8 @@ const logger = {
      * @param {string} message - Log message
      * @param {...any} args - Additional arguments
      */
-    debug: (ctx, message, ...args) => logWithContext("DEBUG", ctx, message, ...args),
+    debug: (ctx, message, ...args) =>
+        logWithContext("DEBUG", ctx, message, ...args),
 
     /**
      * Info level logging.
@@ -113,7 +116,8 @@ const logger = {
      * @param {string} message - Log message
      * @param {...any} args - Additional arguments
      */
-    info: (ctx, message, ...args) => logWithContext("INFO", ctx, message, ...args),
+    info: (ctx, message, ...args) =>
+        logWithContext("INFO", ctx, message, ...args),
 
     /**
      * Warning level logging.
@@ -121,7 +125,8 @@ const logger = {
      * @param {string} message - Log message
      * @param {...any} args - Additional arguments
      */
-    warn: (ctx, message, ...args) => logWithContext("WARN", ctx, message, ...args),
+    warn: (ctx, message, ...args) =>
+        logWithContext("WARN", ctx, message, ...args),
 
     /**
      * Error level logging.
@@ -129,7 +134,8 @@ const logger = {
      * @param {string} message - Log message
      * @param {...any} args - Additional arguments
      */
-    error: (ctx, message, ...args) => logWithContext("ERROR", ctx, message, ...args),
+    error: (ctx, message, ...args) =>
+        logWithContext("ERROR", ctx, message, ...args),
 }
 
 /**

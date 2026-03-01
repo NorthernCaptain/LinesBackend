@@ -5,6 +5,7 @@ const numWorkers = parseInt(process.env.CLUSTER_WORKERS, 10) || os.cpus().length
 
 if (cluster.isMaster) {
     const { setupMasterBroker } = require("./services/navalclash/clusterBroker")
+    const { startSessionPurge } = require("./services/navalclash/sessionPurge")
 
     let nextWorkerId = 1
 
@@ -25,6 +26,9 @@ if (cluster.isMaster) {
 
     // Setup Naval Clash cluster broker for message passing
     setupMasterBroker()
+
+    // Start background session purge job (cleans stale sessions every 60s)
+    startSessionPurge()
 
     // Handle cert reload broadcast from workers
     cluster.on("message", (worker, message) => {

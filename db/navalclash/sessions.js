@@ -38,8 +38,9 @@ async function dbCreateSession(sessionId, userId, version, gameVariant) {
     try {
         await pool.execute(
             `INSERT INTO game_sessions
-                (id, user_one_id, user_one_connected_at, version_one, game_variant, status)
-             VALUES (?, ?, NOW(3), ?, ?, 0)`,
+                (id, user_one_id, user_one_connected_at, version_one,
+                 game_variant, status, last_seen_one)
+             VALUES (?, ?, NOW(3), ?, ?, 0, NOW(3))`,
             [sessionId.toString(), userId, version, gameVariant]
         )
         return true
@@ -49,31 +50,83 @@ async function dbCreateSession(sessionId, userId, version, gameVariant) {
     }
 }
 
+// AI agent version range (2100-2200)
+const AGENT_VERSION_MIN = 2100
+const AGENT_VERSION_MAX = 2200
+
 /**
- * Finds a waiting session for matchmaking.
+ * Checks if a version indicates an AI agent.
+ *
+ * @param {number} version - App version
+ * @returns {boolean} True if version is in the agent range
+ */
+function isAgentVersion(version) {
+    return version >= AGENT_VERSION_MIN && version <= AGENT_VERSION_MAX
+}
+
+/**
+ * Finds a waiting session for random matchmaking.
+ * Excludes personal sessions (target_rival_id IS NOT NULL) to prevent
+ * random players from joining sessions meant for a specific rival.
+ * Prevents agent vs agent matchmaking - agents can only play against humans.
  *
  * @param {number} excludeUserId - User ID to exclude from matching
  * @param {number} gameVariant - Game variant to match
+ * @param {number} joinerVersion - Version of the player trying to join
  * @param {Object} conn - Database connection (for transaction)
  * @returns {Promise<Object|null>} Waiting session or null
  */
-async function dbFindWaitingSession(excludeUserId, gameVariant, conn) {
+async function dbFindWaitingSession(
+    excludeUserId,
+    gameVariant,
+    joinerVersion,
+    conn
+) {
     const db = conn || pool
+    const joinerIsAgent = isAgentVersion(joinerVersion)
+
     try {
-        const [rows] = await db.execute(
-            `SELECT gs.*, u.name as user_one_name
-             FROM game_sessions gs
-             JOIN users u ON u.id = gs.user_one_id
-             WHERE gs.status = 0
-               AND gs.user_two_id IS NULL
-               AND gs.user_one_id != ?
-               AND gs.game_variant = ?
-               AND gs.updated_at > DATE_SUB(NOW(3), INTERVAL 2 MINUTE)
-             ORDER BY gs.created_at ASC
-             LIMIT 1
-             FOR UPDATE`,
-            [excludeUserId, gameVariant]
-        )
+        let query, params
+
+        if (joinerIsAgent) {
+            // Agent joining - only match with humans, exclude personal sessions
+            query = `SELECT gs.*, u.name as user_one_name
+                     FROM game_sessions gs
+                     JOIN users u ON u.id = gs.user_one_id
+                     WHERE gs.status = 0
+                       AND gs.user_two_id IS NULL
+                       AND gs.user_one_id != ?
+                       AND gs.game_variant = ?
+                       AND gs.target_rival_id IS NULL
+                       AND gs.last_seen_one > DATE_SUB(NOW(3), INTERVAL 45 SECOND)
+                       AND (gs.version_one < ? OR gs.version_one > ?)
+                     ORDER BY gs.created_at ASC
+                     LIMIT 1
+                     FOR UPDATE`
+            params = [
+                excludeUserId,
+                gameVariant,
+                AGENT_VERSION_MIN,
+                AGENT_VERSION_MAX,
+            ]
+        } else {
+            // Human joining - match with anyone, exclude personal sessions
+            query = `SELECT gs.*, u.name as user_one_name
+                     FROM game_sessions gs
+                     JOIN users u ON u.id = gs.user_one_id
+                     WHERE gs.status = 0
+                       AND gs.user_two_id IS NULL
+                       AND gs.user_one_id != ?
+                       AND gs.game_variant = ?
+                       AND gs.target_rival_id IS NULL
+                       AND gs.last_seen_one > DATE_SUB(NOW(3), INTERVAL 45 SECOND)
+                     ORDER BY gs.created_at ASC
+                     LIMIT 1
+                     FOR UPDATE`
+            params = [excludeUserId, gameVariant]
+        }
+
+        const [rows] = await db.execute(query, params)
         return rows.length > 0 ? rows[0] : null
     } catch (error) {
         console.error("dbFindWaitingSession error:", error)
@@ -99,6 +152,7 @@ async function dbJoinSession(sessionId, userId, version, conn) {
                 user_two_connected_at = NOW(3),
                 version_two = ?,
                 status = 1,
+                last_seen_two = NOW(3),
                 updated_at = NOW(3)
              WHERE id = ?`,
             [userId, version, sessionId.toString()]
@@ -182,18 +236,19 @@ async function dbGetConfig(name) {
  * Session finish status codes.
  */
 const SESSION_STATUS = {
-    IN_PROGRESS: 0,
-    FINISHED_OK: 1,
-    FINISHED_TERMINATED_WAITING: 2,
-    FINISHED_SURRENDERED_AUTO: 3,
-    FINISHED_SURRENDERED: 4,
-    FINISHED_TIMED_OUT_WAITING: 5,
-    FINISHED_TIMED_OUT_PLAYING: 6,
-    FINISHED_TERMINATED_DUPLICATE: 7,
-    FINISHED_LEFT_OLD: 8,
-    FINISHED_NOT_PINGABLE: 9,
-    FINISHED_TIMED_BANNED: 10,
-    FINISHED_SLEEP_CHEATER: 11,
+    WAITING: 0, // Waiting for second player
+    IN_PROGRESS: 1, // Both players connected, game in progress
+    FINISHED_TERMINATED_WAITING: 2, // Waiting session terminated (player left)
+    FINISHED_SURRENDERED_AUTO: 3, // Auto-surrender (opponent disconnected)
+    FINISHED_SURRENDERED: 4, // Player surrendered
+    FINISHED_TIMED_OUT_WAITING: 5, // Waiting session timed out
+    FINISHED_TIMED_OUT_PLAYING: 6, // Playing session timed out
+    FINISHED_TERMINATED_DUPLICATE: 7, // Terminated due to user reconnecting
+    FINISHED_LEFT_OLD: 8, // Old session left
+    FINISHED_NOT_PINGABLE: 9, // Session not pingable
+    FINISHED_OK: 10, // Game finished normally
+    FINISHED_SLEEP_CHEATER: 11, // Sleep cheater detected
+    FINISHED_TIMED_BANNED: 12, // Banned for timeout
 }
 
 /**
@@ -207,18 +262,130 @@ const SESSION_STATUS = {
 async function dbTerminateUserSessions(userId, conn) {
     const db = conn || pool
     try {
+        // Only terminate sessions that are still active (WAITING or IN_PROGRESS)
+        // Don't touch already-finished sessions (status >= 2)
         const [result] = await db.execute(
             `UPDATE game_sessions SET
                 status = ?,
                 finished_at = NOW(3)
              WHERE (user_one_id = ? OR user_two_id = ?)
-               AND status < 10`,
+               AND status <= 1`,
             [SESSION_STATUS.FINISHED_TERMINATED_DUPLICATE, userId, userId]
         )
         return result.affectedRows
     } catch (error) {
         console.error("dbTerminateUserSessions error:", error)
         return 0
+    }
+}
+
+/**
+ * Updates the last_seen timestamp for a specific player in a session.
+ * Also updates updated_at via ON UPDATE trigger.
+ *
+ * @param {BigInt|string} baseSessionId - Base session ID (even)
+ * @param {number} player - Player number (0 or 1)
+ * @returns {Promise<boolean>} True if updated successfully
+ */
+async function dbUpdatePlayerLastSeen(baseSessionId, player) {
+    const column = player === 0 ? "last_seen_one" : "last_seen_two"
+    try {
+        await pool.execute(
+            `UPDATE game_sessions SET ${column} = NOW(3)
+             WHERE id = ? AND status <= 1`,
+            [baseSessionId.toString()]
+        )
+        return true
+    } catch (error) {
+        console.error("dbUpdatePlayerLastSeen error:", error)
+        return false
+    }
+}
+
+/**
+ * Checks opponent's last_seen timestamp for dead-opponent detection.
+ * Returns session info including opponent's last_seen and session status.
+ *
+ * @param {BigInt|string} baseSessionId - Base session ID (even)
+ * @param {number} player - Current player number (0 or 1)
+ * @returns {Promise<Object|null>} Session info or null
+ */
+async function dbGetOpponentLastSeen(baseSessionId, player) {
+    const column = player === 0 ? "last_seen_two" : "last_seen_one"
+    try {
+        const [rows] = await pool.execute(
+            `SELECT status, ${column} as opponent_last_seen,
+                    user_one_id, user_two_id
+             FROM game_sessions WHERE id = ?`,
+            [baseSessionId.toString()]
+        )
+        return rows.length > 0 ? rows[0] : null
+    } catch (error) {
+        console.error("dbGetOpponentLastSeen error:", error)
+        return null
+    }
+}
+
+/**
+ * Closes a session with given status atomically.
+ * Only closes if session is still active (status <= 1).
+ *
+ * @param {BigInt|string} baseSessionId - Base session ID (even)
+ * @param {number} status - New finish status code
+ * @returns {Promise<number>} Number of affected rows (0 or 1)
+ */
+async function dbCloseStaleSession(baseSessionId, status) {
+    try {
+        const [result] = await pool.execute(
+            `UPDATE game_sessions SET
+                status = ?,
+                finished_at = NOW(3)
+             WHERE id = ? AND status <= 1`,
+            [status, baseSessionId.toString()]
+        )
+        return result.affectedRows
+    } catch (error) {
+        console.error("dbCloseStaleSession error:", error)
+        return 0
+    }
+}
+
+/**
+ * Finds stale sessions that should be purged by the background job.
+ * Returns waiting sessions where player one is stale,
+ * and in-progress sessions where both players are stale.
+ *
+ * @param {number} purgeThresholdSec - Seconds of inactivity before purge (e.g. 120)
+ * @returns {Promise<Array>} Array of stale sessions with id and status
+ */
+async function dbFindStaleSessions(purgeThresholdSec) {
+    try {
+        const [rows] = await pool.execute(
+            `SELECT id, status, user_one_id, user_two_id,
+                    last_seen_one, last_seen_two
+             FROM game_sessions
+             WHERE status <= 1
+               AND (
+                   (status = 0 AND (
+                       last_seen_one IS NULL
+                       OR last_seen_one < DATE_SUB(NOW(3), INTERVAL ? SECOND)
+                   ))
+                   OR
+                   (status = 1 AND (
+                       last_seen_one IS NULL
+                       OR last_seen_one < DATE_SUB(NOW(3), INTERVAL ? SECOND)
+                   ) AND (
+                       last_seen_two IS NULL
+                       OR last_seen_two < DATE_SUB(NOW(3), INTERVAL ? SECOND)
+                   ))
+               )
+             LIMIT 100`,
+            [purgeThresholdSec, purgeThresholdSec, purgeThresholdSec]
+        )
+        return rows
+    } catch (error) {
+        console.error("dbFindStaleSessions error:", error)
+        return []
     }
 }
 
@@ -232,4 +399,8 @@ module.exports = {
     dbIncrementMoves,
     dbGetConfig,
     dbTerminateUserSessions,
+    dbUpdatePlayerLastSeen,
+    dbGetOpponentLastSeen,
+    dbCloseStaleSession,
+    dbFindStaleSessions,
 }

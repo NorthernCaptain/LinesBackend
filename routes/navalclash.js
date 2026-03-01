@@ -5,6 +5,8 @@
  */
 
 const express = require("express")
+const { navalEncryption } = require("../middleware/navalEncryption")
+const { handshake } = require("../services/navalclash/handshakeService")
 
 /**
  * Creates and configures the Naval Clash router.
@@ -14,6 +16,15 @@ const express = require("express")
  */
 function router(app) {
     const r = express.Router()
+
+    // Parse binary bodies for encrypted requests
+    r.use(express.raw({ type: "application/octet-stream", limit: "1mb" }))
+
+    // Handshake uses RSA encryption (establishes AES key) - before middleware
+    r.post("/handshake", handshake)
+
+    // All other routes use AES encryption via middleware
+    r.use(navalEncryption)
 
     // Import services
     const {
@@ -32,6 +43,8 @@ function router(app) {
         finish,
         dutchMove,
         shipMove,
+        weaponsList,
+        radarActivation,
     } = require("../services/navalclash/gameService")
     const {
         addRival,
@@ -41,9 +54,21 @@ function router(app) {
         getRecentOpponents,
         getOnlineUsers,
         userMarker,
+        userAnswer,
     } = require("../services/navalclash/socialService")
-    const { getTopScores } = require("../services/navalclash/leaderboardService")
-    const { getInventory } = require("../services/navalclash/shopService")
+    const {
+        getTopScores,
+    } = require("../services/navalclash/leaderboardService")
+    const {
+        getItemsList,
+        getInventory,
+        internalBuy,
+    } = require("../services/navalclash/shopService")
+    const {
+        exportProfile,
+        importProfile,
+        syncProfile,
+    } = require("../services/navalclash/profileService")
 
     // Phase 1: Connect & Users
     r.post("/connect", connect)
@@ -64,6 +89,8 @@ function router(app) {
     r.post("/fin", finish)
     r.post("/dutch", dutchMove)
     r.post("/smove", shipMove)
+    r.post("/wpl", weaponsList)
+    r.post("/anr", radarActivation)
 
     // Phase 4: Social Features
     r.post("/umarker", userMarker)
@@ -73,15 +100,32 @@ function router(app) {
     r.post("/usearch", searchUsers)
     r.post("/ugetrcnt", getRecentOpponents)
     r.post("/ugetair", getOnlineUsers)
+    r.post("/uanswer", userAnswer)
 
     // Phase 5: Leaderboard & Shop (no Google billing)
     r.post("/topTen", getTopScores)
+    r.post("/ils", getItemsList)
+    r.post("/iby", internalBuy)
     r.post("/inventory", getInventory)
 
-    // Phase 6 routes will be added as that phase is implemented
-    // r.post("/ufv", syncProfile)
-    // r.post("/uexp", exportProfile)
-    // r.post("/uimp", importProfile)
+    // Phase 6: Profile Management
+    r.post("/uexp", exportProfile)
+    r.post("/uimp", importProfile)
+    r.post("/ufv", syncProfile)
+
+    // Debug/test endpoint for remote logging
+    r.post("/echo", (req, res) => {
+        const { device, tag, msg, ts } = req.body
+        const timestamp = ts
+            ? new Date(ts).toISOString()
+            : new Date().toISOString()
+        const deviceTag = device || "UNKNOWN"
+        const logTag = tag || "LOG"
+        console.log(
+            `[${timestamp}] [${deviceTag}] [${logTag}] ${msg || JSON.stringify(req.body)}`
+        )
+        res.json({ status: "ok" })
+    })
 
     return r
 }

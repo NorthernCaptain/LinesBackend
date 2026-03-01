@@ -5,11 +5,16 @@
  */
 
 const mockExecute = jest.fn()
+const mockSendMessage = jest.fn()
 
 jest.mock("../../db/navalclash", () => ({
     pool: {
         execute: mockExecute,
     },
+}))
+
+jest.mock("./messageService", () => ({
+    sendMessage: mockSendMessage,
 }))
 
 const {
@@ -20,11 +25,18 @@ const {
     getRecentOpponents,
     getOnlineUsers,
     userMarker,
+    userAnswer,
     serializeRival,
     serializeSearchUser,
-    LIST_TYPE_FRIENDS,
-    LIST_TYPE_BLOCKED,
+    findPendingInvitation,
 } = require("./socialService")
+
+const { LIST_TYPE, MSG } = require("./constants")
+const LIST_TYPE_FRIENDS = LIST_TYPE.FRIENDS
+const LIST_TYPE_BLOCKED = LIST_TYPE.BLOCKED
+const MSG_PERSONAL_RIVAL_REQUEST = MSG.PERSONAL_RIVAL_REQUEST
+const MSG_PERSONAL_RIVAL_ACCEPTED = MSG.PERSONAL_RIVAL_ACCEPTED
+const MSG_PERSONAL_RIVAL_REJECTED = MSG.PERSONAL_RIVAL_REJECTED
 
 describe("services/navalclash/socialService", () => {
     beforeEach(() => {
@@ -111,6 +123,8 @@ describe("services/navalclash/socialService", () => {
                 l: "--",
                 g: 30,
                 gw: 15,
+                gp: 0,
+                iw: 0,
                 d: "",
                 v: 0,
                 s: 0,
@@ -271,7 +285,10 @@ describe("services/navalclash/socialService", () => {
 
             await getRivals(req, mockRes)
 
-            expect(mockRes.json).toHaveBeenCalledWith({ type: "usaved", ar: [] })
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "usaved",
+                ar: [],
+            })
         })
 
         it("should return rivals with list type", async () => {
@@ -443,7 +460,9 @@ describe("services/navalclash/socialService", () => {
             expect(response.ar[0].iw).toBe(1) // user id=1 won
             expect(response.ar[1].iw).toBe(0) // user id=1 lost
             expect(response.ar[0].t).toBe(2) // TYPE_RECENT
-            expect(response.ar[0].gp).toBe(Math.floor(playedAt.getTime() / 1000)) // game played time
+            expect(response.ar[0].gp).toBe(
+                Math.floor(playedAt.getTime() / 1000)
+            ) // game played time
         })
     })
 
@@ -463,7 +482,7 @@ describe("services/navalclash/socialService", () => {
                         session_id: 1000n,
                         name: "WaitingUser",
                         face: 1,
-                        last_seen: -2,  // Setting up
+                        last_seen: -2, // Setting up
                         is_playing: 0,
                     },
                 ],
@@ -481,8 +500,8 @@ describe("services/navalclash/socialService", () => {
             expect(response.type).toBe("uair")
             expect(response.ar).toHaveLength(1)
             expect(response.ar[0].sid).toBe("1000")
-            expect(response.ar[0].s).toBe(-2)  // Setting up
-            expect(response.ar[0].ip).toBe(0)  // Not playing
+            expect(response.ar[0].s).toBe(-2) // Setting up
+            expect(response.ar[0].ip).toBe(0) // Not playing
         })
 
         it("should exclude current user from online list", async () => {
@@ -518,7 +537,7 @@ describe("services/navalclash/socialService", () => {
                         session_id: 1000n,
                         name: "PlayingUser",
                         face: 1,
-                        last_seen: -1,  // Currently playing
+                        last_seen: -1, // Currently playing
                         is_playing: 1,
                     },
                 ],
@@ -529,9 +548,9 @@ describe("services/navalclash/socialService", () => {
             await getOnlineUsers(req, mockRes)
 
             const response = mockRes.json.mock.calls[0][0]
-            expect(response.ar[0].sid).toBeNull()  // No session ID for playing users
-            expect(response.ar[0].s).toBe(-1)  // Currently playing
-            expect(response.ar[0].ip).toBe(1)  // Is playing
+            expect(response.ar[0].sid).toBeNull() // No session ID for playing users
+            expect(response.ar[0].s).toBe(-1) // Currently playing
+            expect(response.ar[0].ip).toBe(1) // Is playing
         })
     })
 
@@ -612,6 +631,366 @@ describe("services/navalclash/socialService", () => {
 
             // Should use base session ID (1000) for session update
             expect(mockRes.json).toHaveBeenCalledWith({ type: "uok" })
+        })
+    })
+
+    describe("userAnswer", () => {
+        const mockRes = { json: jest.fn() }
+        const testUser = { id: "test-uuid", nam: "TestUser" }
+
+        beforeEach(() => {
+            mockRes.json.mockClear()
+            mockSendMessage.mockClear()
+            mockSendMessage.mockResolvedValue(1)
+        })
+
+        it("should return error for missing parameters", async () => {
+            const req = { requestId: "test", body: {} }
+
+            await userAnswer(req, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "error",
+                reason: "Missing parameters",
+            })
+        })
+
+        it("should return error if user not found", async () => {
+            mockExecute.mockResolvedValueOnce([[]]) // User not found
+
+            const req = {
+                requestId: "test",
+                body: { u: testUser, ans: true, usid: "1000" },
+            }
+
+            await userAnswer(req, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "error",
+                reason: "User not found",
+            })
+        })
+
+        it("should return banned response for banned user", async () => {
+            mockExecute.mockResolvedValueOnce([
+                [{ id: 1, name: "BannedUser", isbanned: 1 }],
+            ])
+
+            const req = {
+                requestId: "test",
+                body: { u: testUser, ans: true, usid: "1000" },
+            }
+
+            await userAnswer(req, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "banned",
+                msg: {
+                    type: "msg",
+                    m: 9,
+                    p: [],
+                    c: true,
+                },
+                errcode: 1,
+            })
+        })
+
+        it("should send acceptance message to inviter", async () => {
+            mockExecute
+                .mockResolvedValueOnce([
+                    [
+                        {
+                            id: 1,
+                            name: "Responder",
+                            uuid: "resp-uuid",
+                            rank: 5,
+                            face: 2,
+                            isbanned: 0,
+                        },
+                    ],
+                ]) // User lookup
+                .mockResolvedValueOnce([
+                    [{ id: 1000, status: 0, user_one_id: 10 }],
+                ]) // Session lookup
+
+            const req = {
+                requestId: "test",
+                body: { u: testUser, ans: true, usid: "1000" },
+            }
+
+            await userAnswer(req, mockRes)
+
+            expect(mockSendMessage).toHaveBeenCalledWith(1000n, "info", {
+                msg: {
+                    type: "msg",
+                    m: MSG_PERSONAL_RIVAL_ACCEPTED,
+                    p: ["Responder"],
+                    c: false,
+                },
+                u: expect.objectContaining({
+                    nam: "Responder",
+                    i: 1,
+                    rk: 5,
+                    fc: 2,
+                }),
+            })
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "uok" })
+        })
+
+        it("should send rejection message to inviter", async () => {
+            mockExecute
+                .mockResolvedValueOnce([
+                    [
+                        {
+                            id: 1,
+                            name: "Responder",
+                            uuid: "resp-uuid",
+                            isbanned: 0,
+                        },
+                    ],
+                ]) // User lookup
+                .mockResolvedValueOnce([
+                    [{ id: 1000, status: 0, user_one_id: 10 }],
+                ]) // Session lookup
+
+            const req = {
+                requestId: "test",
+                body: { u: testUser, ans: false, usid: "1000" },
+            }
+
+            await userAnswer(req, mockRes)
+
+            expect(mockSendMessage).toHaveBeenCalledWith(
+                1000n,
+                "info",
+                expect.objectContaining({
+                    msg: expect.objectContaining({
+                        m: MSG_PERSONAL_RIVAL_REJECTED,
+                    }),
+                })
+            )
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "uok" })
+        })
+
+        it("should return uok if session not found", async () => {
+            mockExecute
+                .mockResolvedValueOnce([
+                    [{ id: 1, name: "Responder", isbanned: 0 }],
+                ]) // User lookup
+                .mockResolvedValueOnce([[]]) // Session not found
+
+            const req = {
+                requestId: "test",
+                body: { u: testUser, ans: true, usid: "9999" },
+            }
+
+            await userAnswer(req, mockRes)
+
+            expect(mockSendMessage).not.toHaveBeenCalled()
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "uok" })
+        })
+    })
+
+    describe("findPendingInvitation", () => {
+        it("should return null when no pending invitation", async () => {
+            mockExecute.mockResolvedValueOnce([[]])
+
+            const result = await findPendingInvitation(10, 1)
+
+            expect(result).toBeNull()
+            expect(mockExecute).toHaveBeenCalledWith(
+                expect.stringContaining("target_rival_id = ?"),
+                [10, 1]
+            )
+        })
+
+        it("should return invitation details when found", async () => {
+            mockExecute.mockResolvedValueOnce([
+                [
+                    {
+                        session_id: 1000n,
+                        user_one_id: 5,
+                        id: 5,
+                        name: "Inviter",
+                        uuid: "inviter-uuid",
+                        face: 2,
+                        rank: 10,
+                        stars: 500,
+                        games: 100,
+                        gameswon: 60,
+                        lang: "en",
+                    },
+                ],
+            ])
+
+            const result = await findPendingInvitation(10, 1)
+
+            expect(result).toEqual({
+                sessionId: 1000n,
+                inviter: {
+                    id: 5,
+                    name: "Inviter",
+                    uuid: "inviter-uuid",
+                    face: 2,
+                    rank: 10,
+                    stars: 500,
+                    games: 100,
+                    gameswon: 60,
+                    lang: "en",
+                },
+            })
+        })
+
+        it("should handle database errors gracefully", async () => {
+            mockExecute.mockRejectedValueOnce(new Error("DB Error"))
+
+            const result = await findPendingInvitation(10, 1)
+
+            expect(result).toBeNull()
+        })
+    })
+
+    describe("userMarker with pending invitations", () => {
+        const mockRes = { json: jest.fn() }
+        const testUser = { id: "test-uuid", nam: "TestUser" }
+
+        beforeEach(() => {
+            mockRes.json.mockClear()
+        })
+
+        it("should return uask when pending invitation exists", async () => {
+            // Mock findUserFromRequest (user lookup)
+            mockExecute
+                .mockResolvedValueOnce([
+                    [{ id: 10, name: "TestUser", isbanned: 0 }],
+                ]) // User lookup
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE users (status)
+                .mockResolvedValueOnce([
+                    [
+                        {
+                            session_id: 1000n,
+                            user_one_id: 5,
+                            id: 5,
+                            name: "Inviter",
+                            uuid: "inviter-uuid",
+                            face: 2,
+                            rank: 10,
+                            stars: 500,
+                            games: 100,
+                            gameswon: 60,
+                            lang: "en",
+                        },
+                    ],
+                ]) // Pending invitation query
+
+            const req = {
+                requestId: "test",
+                body: { u: testUser, var: 1 },
+            }
+
+            await userMarker(req, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "uask",
+                usid: "1000",
+                u: expect.objectContaining({
+                    nam: "Inviter",
+                    i: 5,
+                    id: "inviter-uuid",
+                    rk: 10,
+                    st: 500,
+                    fc: 2,
+                }),
+                msg: {
+                    type: "msg",
+                    m: MSG_PERSONAL_RIVAL_REQUEST,
+                    p: ["Inviter"],
+                    c: true,
+                },
+            })
+        })
+
+        it("should not check for invitations when session ID is provided", async () => {
+            // Mock findUserBySession (SELECT from game_sessions + users)
+            mockExecute
+                .mockResolvedValueOnce([
+                    [{ id: 1000, user_one_id: 10, user_two_id: null }],
+                ]) // game_sessions
+                .mockResolvedValueOnce([
+                    [{ id: 10, name: "Player1", isbanned: 0 }],
+                ]) // users
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE users (status)
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE game_sessions (heartbeat)
+
+            const req = {
+                requestId: "test",
+                body: { sid: "1000", tp: "edit", var: 1 },
+            }
+
+            await userMarker(req, mockRes)
+
+            // Should return uok, not uask, because session ID was provided
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "uok" })
+            // Should not have queried for pending invitations
+            expect(mockExecute).not.toHaveBeenCalledWith(
+                expect.stringContaining("target_rival_id"),
+                expect.anything()
+            )
+        })
+
+        it("should not check for invitations when user is banned", async () => {
+            mockExecute
+                .mockResolvedValueOnce([
+                    [{ id: 10, name: "BannedUser", isbanned: 1 }],
+                ]) // User lookup
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE users (status)
+
+            const req = {
+                requestId: "test",
+                body: { u: testUser, var: 1 },
+            }
+
+            await userMarker(req, mockRes)
+
+            // Should return uok, not uask
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "uok" })
+            // Should not have queried for pending invitations
+            expect(mockExecute).not.toHaveBeenCalledWith(
+                expect.stringContaining("target_rival_id"),
+                expect.anything()
+            )
+        })
+
+        it("should return uok when no pending invitation", async () => {
+            mockExecute
+                .mockResolvedValueOnce([
+                    [{ id: 10, name: "TestUser", isbanned: 0 }],
+                ]) // User lookup
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE users (status)
+                .mockResolvedValueOnce([[]]) // No pending invitations
+
+            const req = {
+                requestId: "test",
+                body: { u: testUser, var: 1 },
+            }
+
+            await userMarker(req, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "uok" })
+        })
+    })
+
+    describe("constants", () => {
+        it("should export MSG_PERSONAL_RIVAL_REQUEST as 28", () => {
+            expect(MSG_PERSONAL_RIVAL_REQUEST).toBe(28)
+        })
+
+        it("should export MSG_PERSONAL_RIVAL_ACCEPTED as 31", () => {
+            expect(MSG_PERSONAL_RIVAL_ACCEPTED).toBe(31)
+        })
+
+        it("should export MSG_PERSONAL_RIVAL_REJECTED as 29", () => {
+            expect(MSG_PERSONAL_RIVAL_REJECTED).toBe(29)
         })
     })
 })

@@ -4,8 +4,24 @@
  * All rights reserved.
  */
 
-const { pool } = require("../../db/navalclash")
+const {
+    pool,
+    dbUpdateLocalStats,
+    dbFindUserByUuidAndName,
+} = require("../../db/navalclash")
 const { logger } = require("../../utils/logger")
+const { getMinVersion, isMaintenanceMode } = require("./setupService")
+const { MSG, SESSION_STATUS, VERSION } = require("./constants")
+
+/**
+ * Checks if a version indicates an AI agent.
+ *
+ * @param {number} version - App version
+ * @returns {boolean} True if version is in the agent range
+ */
+function isAgentVersion(version) {
+    return version >= VERSION.AGENT_MIN && version <= VERSION.AGENT_MAX
+}
 
 /**
  * Snowflake-style Session ID Generator
@@ -293,7 +309,12 @@ async function joinExistingSession(conn, session, userId, version) {
     const playerSessionId = sessionId + 1n
 
     logger.info(
-        { sid: playerSessionId, uid: userId, opponentUid: session.user_one_id, baseSid: sessionIdStr },
+        {
+            sid: playerSessionId,
+            uid: userId,
+            opponentUid: session.user_one_id,
+            baseSid: sessionIdStr,
+        },
         `Joining existing session as player 1, opponent: ${session.user_one_name}`
     )
 
@@ -305,6 +326,7 @@ async function joinExistingSession(conn, session, userId, version) {
             user_two_connected_at = NOW(3),
             version_two = ?,
             status = 1,
+            last_seen_two = NOW(3),
             updated_at = NOW(3)
          WHERE id = ? AND user_two_id IS NULL`,
         [userId, version, sessionIdStr]
@@ -332,23 +354,46 @@ async function joinExistingSession(conn, session, userId, version) {
  * @param {number} userId - User ID
  * @param {number} version - App version
  * @param {number} gameVariant - Game variant
+ * @param {number|null} targetRivalId - Target rival user ID for personal games (null for random)
  * @returns {Promise<BigInt>} New session ID (even)
  */
-async function createNewSession(conn, userId, version, gameVariant) {
+async function createNewSession(
+    conn,
+    userId,
+    version,
+    gameVariant,
+    targetRivalId = null
+) {
     const sessionId = generateSessionId()
     const sessionIdStr = sessionId.toString()
 
+    const isPersonal = targetRivalId !== null
     logger.info(
-        { sid: sessionIdStr, uid: userId, variant: gameVariant },
-        "Creating new waiting session as player 0"
+        {
+            sid: sessionIdStr,
+            uid: userId,
+            variant: gameVariant,
+            targetRivalId,
+            isPersonal,
+        },
+        `Creating new ${isPersonal ? "personal" : "random"} waiting session as player 0`
     )
 
     // Use query() for BigInt - prepared statements can have issues with large integers
+    // game_type: 0 = random, 1 = personal
     await conn.query(
         `INSERT INTO game_sessions
-            (id, user_one_id, user_one_connected_at, version_one, game_variant, status)
-         VALUES (?, ?, NOW(3), ?, ?, 0)`,
-        [sessionIdStr, userId, version, gameVariant]
+            (id, user_one_id, user_one_connected_at, version_one, game_variant,
+             game_type, target_rival_id, status, last_seen_one)
+         VALUES (?, ?, NOW(3), ?, ?, ?, ?, 0, NOW(3))`,
+        [
+            sessionIdStr,
+            userId,
+            version,
+            gameVariant,
+            isPersonal ? 1 : 0,
+            targetRivalId,
+        ]
     )
 
     return sessionId
@@ -367,11 +412,11 @@ async function acquireMatchmakingLock(conn, gameVariant) {
     // This SELECT FOR UPDATE blocks until any other transaction
     // holding a lock on this variant's row releases it.
     // If the row doesn't exist, we insert it first (handles new variants).
-    await conn.execute(
-        `INSERT INTO matchmaking_locks (game_variant) VALUES (?)
-         ON DUPLICATE KEY UPDATE game_variant = game_variant`,
-        [gameVariant]
-    )
+    // await conn.execute(
+    //     `INSERT INTO matchmaking_locks (game_variant) VALUES (?)
+    //      ON DUPLICATE KEY UPDATE game_variant = game_variant`,
+    //     [gameVariant]
+    // )
     await conn.execute(
         "SELECT * FROM matchmaking_locks WHERE game_variant = ? FOR UPDATE",
         [gameVariant]
@@ -379,7 +424,128 @@ async function acquireMatchmakingLock(conn, gameVariant) {
 }
 
 /**
+ * Searches for rival's waiting session that the current user can join.
+ * Matches if the rival is waiting for us specifically, or for anyone (random).
+ *
+ * @param {Object} conn - Database connection
+ * @param {number} rivalId - Rival's user ID
+ * @param {number} userId - Current user's ID
+ * @param {number} gameVariant - Game variant
+ * @returns {Promise<Object|null>} Waiting session or null
+ */
+async function findRivalWaitingSession(conn, rivalId, userId, gameVariant) {
+    const [rows] = await conn.execute(
+        `SELECT gs.*, u.name as user_one_name
+         FROM game_sessions gs
+         JOIN users u ON u.id = gs.user_one_id
+         WHERE gs.status = 0
+           AND gs.user_two_id IS NULL
+           AND gs.user_one_id = ?
+           AND gs.game_variant = ?
+           AND gs.last_seen_one > DATE_SUB(NOW(3), INTERVAL 45 SECOND)
+           AND (gs.target_rival_id IS NULL OR gs.target_rival_id = ?)
+         ORDER BY gs.created_at ASC
+         LIMIT 1`,
+        [rivalId, gameVariant, userId]
+    )
+    return rows.length > 0 ? rows[0] : null
+}
+
+/**
+ * Searches for a personal session that targets the given user.
+ * Used when a random player connects and someone is waiting for them.
+ *
+ * @param {Object} conn - Database connection
+ * @param {number} userId - Current user's ID (the target)
+ * @param {number} gameVariant - Game variant
+ * @returns {Promise<Object|null>} Waiting session or null
+ */
+async function findPersonalSessionTargetingMe(
+    conn,
+    userId,
+    gameVariant
+) {
+    const [rows] = await conn.execute(
+        `SELECT gs.*, u.name as user_one_name
+         FROM game_sessions gs
+         JOIN users u ON u.id = gs.user_one_id
+         WHERE gs.status = 0
+           AND gs.user_two_id IS NULL
+           AND gs.target_rival_id = ?
+           AND gs.game_variant = ?
+           AND gs.last_seen_one > DATE_SUB(NOW(3), INTERVAL 45 SECOND)
+         ORDER BY gs.created_at ASC
+         LIMIT 1`,
+        [userId, gameVariant]
+    )
+    return rows.length > 0 ? rows[0] : null
+}
+
+/**
+ * Searches for a random waiting session (excludes personal sessions).
+ *
+ * @param {Object} conn - Database connection
+ * @param {number} userId - Current user's ID (to exclude self-matching)
+ * @param {number} gameVariant - Game variant
+ * @param {number} version - Joiner's app version
+ * @returns {Promise<Object|null>} Waiting session or null
+ */
+async function findRandomWaitingSession(
+    conn,
+    userId,
+    gameVariant,
+    version
+) {
+    const joinerIsAgent = isAgentVersion(version)
+
+    let rows
+    if (joinerIsAgent) {
+        // Agent joining: only match with humans, exclude personal sessions
+        ;[rows] = await conn.execute(
+            `SELECT gs.*, u.name as user_one_name
+             FROM game_sessions gs
+             JOIN users u ON u.id = gs.user_one_id
+             WHERE gs.status = 0
+               AND gs.user_two_id IS NULL
+               AND gs.user_one_id != ?
+               AND gs.game_variant = ?
+               AND gs.target_rival_id IS NULL
+               AND gs.last_seen_one > DATE_SUB(NOW(3), INTERVAL 45 SECOND)
+               AND (gs.version_one < ? OR gs.version_one > ?)
+             ORDER BY gs.created_at ASC
+             LIMIT 1`,
+            [userId, gameVariant, VERSION.AGENT_MIN, VERSION.AGENT_MAX]
+        )
+    } else {
+        // Human joining: match with anyone, exclude personal sessions
+        ;[rows] = await conn.execute(
+            `SELECT gs.*, u.name as user_one_name
+             FROM game_sessions gs
+             JOIN users u ON u.id = gs.user_one_id
+             WHERE gs.status = 0
+               AND gs.user_two_id IS NULL
+               AND gs.user_one_id != ?
+               AND gs.game_variant = ?
+               AND gs.target_rival_id IS NULL
+               AND gs.last_seen_one > DATE_SUB(NOW(3), INTERVAL 45 SECOND)
+             ORDER BY gs.created_at ASC
+             LIMIT 1`,
+            [userId, gameVariant]
+        )
+    }
+
+    return rows.length > 0 ? rows[0] : null
+}
+
+/**
  * Finds a waiting session or creates a new one.
+ *
+ * Matchmaking priority:
+ * 1. Personal game (has rival): find rival's session (targeting me or random), else create personal session
+ * 2. Random game: check for personal sessions targeting me first, then regular random matchmaking
+ *
+ * Personal sessions are excluded from random matchmaking so random players
+ * don't steal sessions meant for a specific rival.
  *
  * @param {Object} conn - Database connection
  * @param {Object} user - User object
@@ -389,82 +555,138 @@ async function acquireMatchmakingLock(conn, gameVariant) {
 async function findOrCreateSession(conn, user, body) {
     const gameVariant = body.var || 1
     const version = body.v || 0
-    const hasRival = body.rival && body.rival.id
+    // Client sends rival as User.serializeJSON(): "i" = DB integer ID, "id" = UUID
+    // On rematch, "i" may be 0 if the client didn't have the DB ID - resolve by UUID+name
+    let rivalId = body.rival?.i || null
     const ctx = { uid: user.id, variant: gameVariant }
 
-    if (hasRival) {
-        logger.debug(
-            { ...ctx, rivalId: body.rival.id },
-            "Personal game requested, skipping matchmaking"
+    if (!rivalId && body.rival?.id && body.rival?.nam) {
+        const rivalUser = await dbFindUserByUuidAndName(
+            body.rival.id,
+            body.rival.nam
         )
+        if (rivalUser) {
+            rivalId = rivalUser.id
+            logger.debug(
+                { ...ctx, rivalId, rivalUuid: body.rival.id },
+                "Resolved rival ID from UUID"
+            )
+        }
     }
 
-    if (!hasRival) {
-        // Acquire matchmaking lock to prevent race conditions.
-        // Without this, two players connecting simultaneously when no
-        // waiting session exists would both create their own sessions.
-        logger.debug(ctx, "Acquiring matchmaking lock")
-        await acquireMatchmakingLock(conn, gameVariant)
+    const hasRival = !!rivalId
 
-        logger.debug(ctx, "Searching for waiting session")
-        const [waitingSessions] = await conn.execute(
-            `SELECT gs.*, u.name as user_one_name
-             FROM game_sessions gs
-             JOIN users u ON u.id = gs.user_one_id
-             WHERE gs.status = 0
-               AND gs.user_two_id IS NULL
-               AND gs.user_one_id != ?
-               AND gs.game_variant = ?
-               AND gs.updated_at > DATE_SUB(NOW(3), INTERVAL 2 MINUTE)
-             ORDER BY gs.created_at ASC
-             LIMIT 1`,
-            [user.id, gameVariant]
+    // Always acquire matchmaking lock to prevent race conditions.
+    // Without this, two players connecting simultaneously could both
+    // create their own sessions instead of being matched together.
+    logger.debug(ctx, "Acquiring matchmaking lock")
+    await acquireMatchmakingLock(conn, gameVariant)
+
+    if (hasRival) {
+        // PERSONAL GAME: find rival's waiting session
+        logger.debug(
+            { ...ctx, rivalId },
+            "Personal game requested, searching for rival's session"
         )
 
-        if (waitingSessions.length > 0) {
-            logger.debug(
-                { ...ctx, foundSid: waitingSessions[0].id },
-                `Found ${waitingSessions.length} waiting session(s), joining first`
+        const rivalSession = await findRivalWaitingSession(
+            conn,
+            rivalId,
+            user.id,
+            gameVariant
+        )
+
+        if (rivalSession) {
+            logger.info(
+                { ...ctx, rivalId, foundSid: rivalSession.id },
+                "Found rival's waiting session, joining"
             )
             const sessionId = await joinExistingSession(
                 conn,
-                waitingSessions[0],
+                rivalSession,
                 user.id,
                 version
             )
             return { sessionId, isNewSession: false }
         }
-        logger.debug(ctx, "No waiting sessions found")
+
+        logger.debug(
+            { ...ctx, rivalId },
+            "Rival not waiting, creating personal session"
+        )
+        const sessionId = await createNewSession(
+            conn,
+            user.id,
+            version,
+            gameVariant,
+            rivalId
+        )
+        return { sessionId, isNewSession: true }
     }
 
+    // RANDOM GAME: first check if someone is waiting specifically for us
+    logger.debug(ctx, "Checking for personal sessions targeting me")
+    const personalSession = await findPersonalSessionTargetingMe(
+        conn,
+        user.id,
+        gameVariant
+    )
+
+    if (personalSession) {
+        logger.info(
+            {
+                ...ctx,
+                foundSid: personalSession.id,
+                waitingUid: personalSession.user_one_id,
+            },
+            "Found personal session targeting me, joining"
+        )
+        const sessionId = await joinExistingSession(
+            conn,
+            personalSession,
+            user.id,
+            version
+        )
+        return { sessionId, isNewSession: false }
+    }
+
+    // Regular random matchmaking (excludes personal sessions)
+    logger.debug(
+        { ...ctx, isAgent: isAgentVersion(version), version },
+        "Searching for random waiting session"
+    )
+
+    const randomSession = await findRandomWaitingSession(
+        conn,
+        user.id,
+        gameVariant,
+        version
+    )
+
+    if (randomSession) {
+        logger.info(
+            { ...ctx, foundSid: randomSession.id },
+            "Found random waiting session, joining"
+        )
+        const sessionId = await joinExistingSession(
+            conn,
+            randomSession,
+            user.id,
+            version
+        )
+        return { sessionId, isNewSession: false }
+    }
+
+    logger.debug(ctx, "No waiting sessions found, creating new random session")
     const sessionId = await createNewSession(
         conn,
         user.id,
         version,
-        gameVariant
+        gameVariant,
+        null
     )
     return { sessionId, isNewSession: true }
 }
-
-/**
- * Gets configuration value from database.
- *
- * @param {Object} conn - Database connection
- * @param {string} name - Config name
- * @returns {Promise<Object|null>} Config object or null
- */
-async function getConfig(conn, name) {
-    const [rows] = await conn.execute(
-        "SELECT * FROM gamesetup WHERE name = ?",
-        [name]
-    )
-    return rows[0] || null
-}
-
-/**
- * Session finish status code for duplicate connection.
- */
-const SESSION_STATUS_TERMINATED_DUPLICATE = 7
 
 /**
  * Terminates all active sessions for a user (when they reconnect).
@@ -480,8 +702,8 @@ async function terminateUserSessions(conn, userId) {
             status = ?,
             finished_at = NOW(3)
          WHERE (user_one_id = ? OR user_two_id = ?)
-           AND status < 10`,
-        [SESSION_STATUS_TERMINATED_DUPLICATE, userId, userId]
+           AND status <= 1`,
+        [SESSION_STATUS.FINISHED_TERMINATED_DUPLICATE, userId, userId]
     )
 
     if (result.affectedRows > 0) {
@@ -505,6 +727,7 @@ async function connect(req, res) {
     const reqCtx = { name: body.player, uuid: body.uuuid?.substring(0, 8) }
 
     logger.info(reqCtx, "Connect request received")
+    logger.debug(reqCtx, "Connect body: ", JSON.stringify(body))
 
     if (!body.player || !body.uuuid || body.type !== "connect") {
         logger.warn(reqCtx, "Invalid connect request - missing required fields")
@@ -513,10 +736,24 @@ async function connect(req, res) {
 
     const conn = await pool.getConnection()
     try {
+        // Use READ COMMITTED so the session search sees newly committed sessions.
+        // With default REPEATABLE READ, if our transaction starts before another
+        // player commits their session, we won't see it even after acquiring
+        // the matchmaking lock.
+        await conn.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
         await conn.beginTransaction()
 
         const user = await getOrCreateUser(conn, body)
         const ctx = { ...reqCtx, uid: user.id }
+
+        // Sync local game stats (android, bluetooth, passplay) from client
+        // Server only tracks web games - other stats come from client
+        if (body.u) {
+            const updated = await dbUpdateLocalStats(conn, user.id, body.u)
+            if (updated) {
+                logger.debug(ctx, "Synced local game stats from client")
+            }
+        }
 
         if (body.androidId) {
             await getOrCreateDevice(conn, user.id, body)
@@ -525,11 +762,44 @@ async function connect(req, res) {
         if (user.isbanned) {
             logger.warn(ctx, "User is banned, refusing connection")
             await conn.commit()
-            return res.json({ type: "banned", reason: "User is banned" })
+            // Return banned response with InfoMessage format expected by client
+            // MSG_USER_BANNED = 9
+            return res.json({
+                type: "banned",
+                msg: {
+                    type: "msg",
+                    m: 9, // MSG_USER_BANNED
+                    p: [], // No parameters
+                    c: false, // needConfirm = false
+                },
+                errcode: 1,
+            })
         }
 
-        const maintenance = await getConfig(conn, "maintenance_mode")
-        if (maintenance && maintenance.int_value) {
+        // Check client version against minimum required version
+        const clientVersion = body.v || 0
+        const minVersion = await getMinVersion()
+        if (minVersion > 0 && clientVersion < minVersion) {
+            logger.warn(
+                { ...ctx, clientVersion, minVersion },
+                "Client version too old, refusing connection"
+            )
+            await conn.commit()
+            return res.json({
+                type: "refused",
+                msg: {
+                    type: "msg",
+                    m: MSG.OLD_FORBIDDEN_VERSION,
+                    p: [], // No parameters
+                    c: true, // needConfirm = true (triggers app store redirect)
+                },
+                errcode: 1,
+                reason: "Version too old",
+            })
+        }
+
+        // Check maintenance mode (cached for 1 hour)
+        if (await isMaintenanceMode()) {
             logger.info(ctx, "Server in maintenance mode, refusing connection")
             await conn.commit()
             return res.json({
@@ -587,8 +857,9 @@ async function reconnect(req, res) {
     }
 
     try {
+        // Only allow reconnecting to active sessions (WAITING or IN_PROGRESS)
         const [rows] = await pool.execute(
-            "SELECT * FROM game_sessions WHERE id = ? AND status < 10",
+            "SELECT * FROM game_sessions WHERE id = ? AND status <= 1",
             [sid]
         )
 

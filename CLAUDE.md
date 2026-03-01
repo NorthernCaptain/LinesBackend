@@ -13,11 +13,13 @@ const { logger } = require("../../utils/logger")
 ### Log Format
 
 All logs automatically include timestamp, process ID, and worker ID:
+
 ```
 YYYY-MM-DD HH:mm:ss.SSS pid:workerId: LEVEL [context] message
 ```
 
 Example output:
+
 ```
 2026-01-10 14:32:15.123 12345:2: INFO [sid=115873854376116224 uid=42] User connected successfully
 ```
@@ -30,6 +32,7 @@ Example output:
 - `ERROR` - Failures requiring attention (database errors, invalid requests)
 
 Set log level via environment variable:
+
 ```
 LOG_LEVEL=INFO  # Only show INFO, WARN, ERROR
 LOG_LEVEL=DEBUG # Show all logs (default)
@@ -48,6 +51,7 @@ logger.info({}, "User connected")
 ```
 
 Common context fields:
+
 - `reqId` - Request ID (8-char UUID, set by middleware on `req.requestId`)
 - `sid` - Session ID (full BigInt as string)
 - `uid` - User ID
@@ -60,6 +64,7 @@ Common context fields:
 ### Logging Patterns
 
 #### Entry points (request handlers)
+
 ```javascript
 async function connect(req, res) {
     const ctx = { uid: req.body.uid }
@@ -70,6 +75,7 @@ async function connect(req, res) {
 ```
 
 #### Decision points
+
 ```javascript
 if (existingSession) {
     logger.debug(ctx, "Found existing session, joining")
@@ -79,6 +85,7 @@ if (existingSession) {
 ```
 
 #### Errors
+
 ```javascript
 try {
     // ... operation
@@ -89,9 +96,14 @@ try {
 ```
 
 #### IPC/Cluster communication
+
 ```javascript
 logger.debug(
-    { sid: sessionId, reqId: requestId?.substring(0, 8), workerId: poll.workerId },
+    {
+        sid: sessionId,
+        reqId: requestId?.substring(0, 8),
+        workerId: poll.workerId,
+    },
     "Waking receiver poll"
 )
 ```
@@ -105,20 +117,22 @@ const { createLogger } = require("../../utils/logger")
 
 function handleRequest(req, res) {
     const log = createLogger({ reqId: req.requestId, uid: req.body.uid })
-    log.info({}, "Processing request")  // Includes reqId and uid automatically
-    log.debug({ step: 1 }, "Step 1 complete")  // Merges contexts
+    log.info({}, "Processing request") // Includes reqId and uid automatically
+    log.debug({ step: 1 }, "Step 1 complete") // Merges contexts
 }
 ```
 
 ## Session ID Conventions
 
 Session IDs use a Snowflake-style format:
+
 - 48-bit timestamp
 - 10-bit worker ID
 - 5-bit sequence
 - 1-bit player indicator (last bit)
 
 Player identification:
+
 - Even session ID = Player 0
 - Odd session ID = Player 1
 - Opponent's session ID = `sessionId XOR 1`

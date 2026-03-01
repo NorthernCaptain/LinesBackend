@@ -13,9 +13,9 @@ const { pool } = require("./pool")
  * @param {string} name - Player name
  * @returns {Promise<Object|null>} User object or null if not found
  */
-async function dbFindUserByUuidAndName(uuid, name) {
+async function dbFindUserByUuidAndName(uuid, name, db) {
     try {
-        const [rows] = await pool.execute(
+        const [rows] = await (db || pool).execute(
             "SELECT * FROM users WHERE uuid = ? AND name = ?",
             [uuid, name]
         )
@@ -40,6 +40,25 @@ async function dbFindUserById(id) {
         return rows.length > 0 ? rows[0] : null
     } catch (error) {
         console.error("dbFindUserById error:", error)
+        return null
+    }
+}
+
+/**
+ * Finds a user by UUID.
+ *
+ * @param {string} uuid - User UUID
+ * @returns {Promise<Object|null>} User object or null if not found
+ */
+async function dbFindUserByUuid(uuid) {
+    try {
+        const [rows] = await pool.execute(
+            "SELECT * FROM users WHERE uuid = ? LIMIT 1",
+            [uuid]
+        )
+        return rows.length > 0 ? rows[0] : null
+    } catch (error) {
+        console.error("dbFindUserByUuid error:", error)
         return null
     }
 }
@@ -143,6 +162,166 @@ async function dbIsPinTaken(name, pin, excludeUserId) {
 }
 
 /**
+ * Finds a user by name and PIN (for profile import).
+ *
+ * @param {string} name - Player name
+ * @param {number} pin - Profile recovery PIN
+ * @returns {Promise<Object|null>} User object or null if not found
+ */
+async function dbFindUserByNameAndPin(name, pin) {
+    try {
+        const [rows] = await pool.execute(
+            "SELECT * FROM users WHERE name = ? AND pin = ? AND id != 0",
+            [name, pin]
+        )
+        return rows.length > 0 ? rows[0] : null
+    } catch (error) {
+        console.error("dbFindUserByNameAndPin error:", error)
+        return null
+    }
+}
+
+/**
+ * Updates user profile data from export request.
+ * Updates stats, face, language, timezone, and coins from client data.
+ *
+ * @param {Object} conn - Database connection
+ * @param {number} userId - User ID
+ * @param {Object} userData - Client's PlayerInfo object
+ * @returns {Promise<boolean>} True if updated successfully
+ */
+async function dbUpdateUserProfile(conn, userId, userData) {
+    try {
+        await conn.execute(
+            `UPDATE users SET
+                face = COALESCE(?, face),
+                lang = COALESCE(?, lang),
+                timezone = COALESCE(?, timezone),
+                coins = COALESCE(?, coins),
+                updated_at = NOW()
+             WHERE id = ?`,
+            [
+                userData.fc ?? null,
+                userData.l ?? null,
+                userData.tz ?? null,
+                userData.an ?? null,
+                userId,
+            ]
+        )
+        return true
+    } catch (error) {
+        console.error("dbUpdateUserProfile error:", error)
+        return false
+    }
+}
+
+/**
+ * Syncs user profile data from UFV request.
+ * Updates profile fields and non-web game stats from client.
+ * Server remains authoritative for web game stats.
+ *
+ * @param {number} userId - User ID
+ * @param {Object} clientUser - Client's PlayerInfo object
+ * @param {number} version - Client version
+ * @returns {Promise<boolean>} True if updated successfully
+ */
+async function dbSyncUserProfile(userId, clientUser, version) {
+    if (!clientUser) {
+        return false
+    }
+
+    try {
+        // Update profile fields (face, lang, tz) and version
+        await pool.execute(
+            `UPDATE users SET
+                face = COALESCE(?, face),
+                lang = COALESCE(?, lang),
+                timezone = COALESCE(?, timezone),
+                version = ?,
+                updated_at = NOW()
+             WHERE id = ?`,
+            [
+                clientUser.fc ?? null,
+                clientUser.l ?? null,
+                clientUser.tz ?? null,
+                version || 0,
+                userId,
+            ]
+        )
+
+        // Update non-web game stats if provided
+        // Server is authoritative for web stats, client for android/bt/passplay
+        if (Array.isArray(clientUser.ga) && Array.isArray(clientUser.wa)) {
+            const gamesAndroid = clientUser.ga[0] || 0
+            const gamesBluetooth = clientUser.ga[1] || 0
+            const gamesPassplay = clientUser.ga[3] || 0
+            const winsAndroid = clientUser.wa[0] || 0
+            const winsBluetooth = clientUser.wa[1] || 0
+            const winsPassplay = clientUser.wa[3] || 0
+
+            // Update non-web stats and recalculate totals
+            await pool.execute(
+                `UPDATE users SET
+                    games_android = ?,
+                    games_bluetooth = ?,
+                    games_passplay = ?,
+                    wins_android = ?,
+                    wins_bluetooth = ?,
+                    wins_passplay = ?,
+                    games = ? + ? + games_web + ?,
+                    gameswon = ? + ? + wins_web + ?
+                 WHERE id = ?`,
+                [
+                    gamesAndroid,
+                    gamesBluetooth,
+                    gamesPassplay,
+                    winsAndroid,
+                    winsBluetooth,
+                    winsPassplay,
+                    gamesAndroid,
+                    gamesBluetooth,
+                    gamesPassplay,
+                    winsAndroid,
+                    winsBluetooth,
+                    winsPassplay,
+                    userId,
+                ]
+            )
+        }
+
+        return true
+    } catch (error) {
+        console.error("dbSyncUserProfile error:", error)
+        return false
+    }
+}
+
+/**
+ * Logs a profile action (export/import) for audit purposes.
+ *
+ * @param {number} userId - User ID
+ * @param {string} action - Action type ('export' or 'import')
+ * @param {string} details - Additional details
+ * @returns {Promise<boolean>} True if logged successfully
+ */
+async function dbLogProfileAction(userId, action, details) {
+    try {
+        await pool.execute(
+            `INSERT INTO profile_logs (user_id, action, details, created_at)
+             VALUES (?, ?, ?, NOW())`,
+            [userId, action, details]
+        )
+        return true
+    } catch (error) {
+        // Log table might not exist, just log to console
+        console.log(
+            `Profile action: user=${userId} action=${action} ${details}`
+        )
+        return false
+    }
+}
+
+/**
  * Updates user's last device ID.
  *
  * @param {number} userId - User ID
@@ -162,12 +341,190 @@ async function dbUpdateUserLastDevice(userId, deviceId) {
     }
 }
 
+/**
+ * Updates non-web game stats from client data.
+ * The server only tracks web games - android, bluetooth, and passplay stats
+ * are tracked locally on the device and synced via this function.
+ *
+ * Client sends stats in ga[] and wa[] arrays:
+ * - ga[0]/wa[0]: android games/wins
+ * - ga[1]/wa[1]: bluetooth games/wins
+ * - ga[2]/wa[2]: web games/wins (IGNORED - server is authoritative)
+ * - ga[3]/wa[3]: passplay games/wins
+ *
+ * @param {Object} conn - Database connection (or pool)
+ * @param {number} userId - User ID
+ * @param {Object} clientUser - Client's PlayerInfo object with ga/wa arrays
+ * @returns {Promise<boolean>} True if updated successfully
+ */
+async function dbUpdateLocalStats(conn, userId, clientUser) {
+    if (
+        !clientUser ||
+        !Array.isArray(clientUser.ga) ||
+        !Array.isArray(clientUser.wa)
+    ) {
+        return false
+    }
+
+    const db = conn || pool
+    const ga = clientUser.ga
+    const wa = clientUser.wa
+
+    // Extract non-web stats (indices 0, 1, 3 - skip index 2 which is web)
+    const gamesAndroid = ga[0] || 0
+    const gamesBluetooth = ga[1] || 0
+    const gamesPassplay = ga[3] || 0
+    const winsAndroid = wa[0] || 0
+    const winsBluetooth = wa[1] || 0
+    const winsPassplay = wa[3] || 0
+
+    // Stars are accumulated by the client across all game modes.
+    // Server only awards stars for web games, so the client's total
+    // is always the most up-to-date value. We take the max of client
+    // and server to avoid losing stars from either source.
+    const clientStars = clientUser.st || 0
+
+    try {
+        // Update non-web stats, stars, and recalculate totals
+        // Total = android + bluetooth + web (from server) + passplay
+        // Stars = max(client, server) to never lose stars from either side
+        await db.execute(
+            `UPDATE users SET
+                games_android = ?,
+                games_bluetooth = ?,
+                games_passplay = ?,
+                wins_android = ?,
+                wins_bluetooth = ?,
+                wins_passplay = ?,
+                stars = GREATEST(stars, ?),
+                games = ? + ? + games_web + ?,
+                gameswon = ? + ? + wins_web + ?
+             WHERE id = ?`,
+            [
+                gamesAndroid,
+                gamesBluetooth,
+                gamesPassplay,
+                winsAndroid,
+                winsBluetooth,
+                winsPassplay,
+                clientStars,
+                gamesAndroid,
+                gamesBluetooth,
+                gamesPassplay,
+                winsAndroid,
+                winsBluetooth,
+                winsPassplay,
+                userId,
+            ]
+        )
+        return true
+    } catch (error) {
+        console.error("dbUpdateLocalStats error:", error)
+        return false
+    }
+}
+
+/**
+ * Updates user profile fields and local game stats in a single query.
+ * Combines profile update (face, lang, timezone, rank, stars) with
+ * local stats update (android, bluetooth, passplay games/wins).
+ * Coins are server-authoritative and never updated from client data.
+ *
+ * @param {Object} db - Database connection or pool
+ * @param {number} userId - User ID
+ * @param {Object} userData - Client's PlayerInfo object
+ * @returns {Promise<boolean>} True if updated successfully
+ */
+async function dbUpdateProfileAndStats(db, userId, userData) {
+    const hasStats = Array.isArray(userData.ga) && Array.isArray(userData.wa)
+
+    try {
+        if (hasStats) {
+            const gamesAndroid = userData.ga[0] || 0
+            const gamesBluetooth = userData.ga[1] || 0
+            const gamesPassplay = userData.ga[3] || 0
+            const winsAndroid = userData.wa[0] || 0
+            const winsBluetooth = userData.wa[1] || 0
+            const winsPassplay = userData.wa[3] || 0
+
+            await db.execute(
+                `UPDATE users SET
+                    face = COALESCE(?, face),
+                    lang = COALESCE(?, lang),
+                    timezone = COALESCE(?, timezone),
+                    \`rank\` = COALESCE(?, \`rank\`),
+                    stars = COALESCE(?, stars),
+                    games_android = ?,
+                    games_bluetooth = ?,
+                    games_passplay = ?,
+                    wins_android = ?,
+                    wins_bluetooth = ?,
+                    wins_passplay = ?,
+                    games = ? + ? + games_web + ?,
+                    gameswon = ? + ? + wins_web + ?,
+                    updated_at = NOW()
+                 WHERE id = ?`,
+                [
+                    userData.fc ?? null,
+                    userData.l ?? null,
+                    userData.tz ?? null,
+                    userData.rk ?? null,
+                    userData.st ?? null,
+                    gamesAndroid,
+                    gamesBluetooth,
+                    gamesPassplay,
+                    winsAndroid,
+                    winsBluetooth,
+                    winsPassplay,
+                    gamesAndroid,
+                    gamesBluetooth,
+                    gamesPassplay,
+                    winsAndroid,
+                    winsBluetooth,
+                    winsPassplay,
+                    userId,
+                ]
+            )
+        } else {
+            await db.execute(
+                `UPDATE users SET
+                    face = COALESCE(?, face),
+                    lang = COALESCE(?, lang),
+                    timezone = COALESCE(?, timezone),
+                    \`rank\` = COALESCE(?, \`rank\`),
+                    stars = COALESCE(?, stars),
+                    updated_at = NOW()
+                 WHERE id = ?`,
+                [
+                    userData.fc ?? null,
+                    userData.l ?? null,
+                    userData.tz ?? null,
+                    userData.rk ?? null,
+                    userData.st ?? null,
+                    userId,
+                ]
+            )
+        }
+        return true
+    } catch (error) {
+        console.error("dbUpdateProfileAndStats error:", error)
+        return false
+    }
+}
+
 module.exports = {
     dbFindUserByUuidAndName,
     dbFindUserById,
+    dbFindUserByUuid,
     dbCreateUser,
     dbUpdateUserLogin,
     dbUpdateUserPin,
     dbIsPinTaken,
+    dbFindUserByNameAndPin,
+    dbUpdateUserProfile,
+    dbSyncUserProfile,
+    dbLogProfileAction,
     dbUpdateUserLastDevice,
+    dbUpdateLocalStats,
+    dbUpdateProfileAndStats,
 }

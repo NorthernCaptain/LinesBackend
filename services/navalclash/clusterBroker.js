@@ -109,6 +109,38 @@ function handleUnsubscribe(msg) {
 }
 
 /**
+ * Handles CANCEL_SESSION message - cancels the poll for a closed session.
+ * Sends SESSION_CLOSED to the worker holding the poll so it returns errcode 5.
+ *
+ * @param {Object} msg - Message with sessionId
+ * @returns {void}
+ */
+function handleCancelSession(msg) {
+    const { sessionId } = msg
+    const ctx = { sid: sessionId }
+
+    const poll = activePolls.get(sessionId)
+    if (poll) {
+        const worker = cluster.workers[poll.workerId]
+        if (worker) {
+            logger.debug(
+                { ...ctx, reqId: poll.requestId, workerId: poll.workerId },
+                "Cancelling poll for closed session"
+            )
+            worker.send({
+                nc: true,
+                type: "SESSION_CLOSED",
+                requestId: poll.requestId,
+            })
+        }
+        activePolls.delete(sessionId)
+        requestToSession.delete(poll.requestId)
+    } else {
+        logger.debug(ctx, "No active poll for closed session")
+    }
+}
+
+/**
  * Handles PUBLISH message - wakes the receiver's poll.
  * Computes receiver's session ID by flipping sender's last bit.
  *
@@ -175,6 +207,9 @@ function setupWorkerHandlers(worker) {
             case "PUBLISH":
                 handlePublish(msg)
                 break
+            case "CANCEL_SESSION":
+                handleCancelSession(msg)
+                break
         }
     })
 }
@@ -240,5 +275,6 @@ module.exports = {
     handleSubscribe,
     handleUnsubscribe,
     handlePublish,
+    handleCancelSession,
     getOpponentSessionId,
 }

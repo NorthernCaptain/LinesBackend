@@ -38,11 +38,16 @@ function serializeScore(row) {
         // Winner player info
         u: {
             nam: row.name,
+            dev: "", // Required by User.deserializeJSON before 'l'
             i: row.user_id,
+            ut: 2, // User type (required by client before 'l')
             rk: row.user_rank || 0,
             fc: row.face || 0,
             id: row.uuid || "",
             l: row.lang || "--",
+            st: 0,
+            pld: 0,
+            won: 0,
         },
     }
 
@@ -77,7 +82,9 @@ function serializeStarEntry(row) {
         uv: row.version || 0,
         u: {
             nam: row.name,
+            dev: "", // Required by User.deserializeJSON before 'l'
             i: row.id,
+            ut: 2, // User type (required by client before 'l')
             rk: row.rank || 0,
             fc: row.face || 0,
             id: row.uuid || "",

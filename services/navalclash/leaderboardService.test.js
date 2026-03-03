@@ -87,11 +87,16 @@ describe("services/navalclash/leaderboardService", () => {
                 ov: 2035,
                 u: {
                     nam: "Winner",
+                    dev: "",
                     i: 123,
+                    ut: 2,
                     rk: 5,
                     fc: 5,
                     id: "winner-uuid",
                     l: "en_US",
+                    st: 0,
+                    pld: 0,
+                    won: 0,
                 },
                 o: {
                     nam: "Loser",
@@ -129,10 +134,15 @@ describe("services/navalclash/leaderboardService", () => {
 
             expect(result.uv).toBe(0)
             expect(result.ov).toBe(0)
+            expect(result.u.dev).toBe("")
+            expect(result.u.ut).toBe(2)
             expect(result.u.fc).toBe(0)
             expect(result.u.rk).toBe(0)
             expect(result.u.id).toBe("")
             expect(result.u.l).toBe("--")
+            expect(result.u.st).toBe(0)
+            expect(result.u.pld).toBe(0)
+            expect(result.u.won).toBe(0)
         })
     })
 
@@ -165,6 +175,8 @@ describe("services/navalclash/leaderboardService", () => {
             expect(result.score).toBe(5000)
             expect(result.uv).toBe(2035)
             expect(result.u.nam).toBe("StarPlayer")
+            expect(result.u.dev).toBe("")
+            expect(result.u.ut).toBe(2)
             expect(result.u.i).toBe(123)
             expect(result.u.rk).toBe(7)
             expect(result.u.l).toBe("ru_RU")
@@ -187,6 +199,8 @@ describe("services/navalclash/leaderboardService", () => {
 
             expect(result.score).toBe(0)
             expect(result.uv).toBe(0)
+            expect(result.u.dev).toBe("")
+            expect(result.u.ut).toBe(2)
             expect(result.u.l).toBe("--")
             expect(result.u.st).toBe(0)
             expect(result.u.ga).toEqual([0, 0, 0, 0])

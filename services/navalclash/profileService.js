@@ -16,6 +16,7 @@ const {
     dbGetUserWeaponArrays,
 } = require("../../db/navalclash")
 const { logger } = require("../../utils/logger")
+const { BAN } = require("./constants")
 
 /**
  * Generates a unique PIN for a user.
@@ -297,8 +298,8 @@ async function importProfile(req, res) {
 
         ctx.uid = user.id
 
-        // Check if user is banned
-        if (user.isbanned) {
+        // Check if user is banned from playing
+        if (user.isbanned & BAN.GAME) {
             logger.warn(ctx, "Import failed - user is banned")
             return res.json({ type: "uimpres" })
         }

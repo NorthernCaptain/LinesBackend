@@ -8,7 +8,7 @@ const { pool, dbUpdateLocalStats } = require("../../db/navalclash")
 const { logger } = require("../../utils/logger")
 const { buildMdfMessage } = require("./gameService")
 const { sendMessage } = require("./messageService")
-const { MSG, LIST_TYPE, RIVAL_TYPE, USER_STATUS } = require("./constants")
+const { MSG, LIST_TYPE, RIVAL_TYPE, USER_STATUS, BAN } = require("./constants")
 
 /**
  * Serializes a rival object for API response.
@@ -683,7 +683,7 @@ async function userMarker(req, res) {
 
         // Check for pending personal game invitations
         // Only check if user is not already in a session (no sid provided)
-        if (!sid && !user.isbanned) {
+        if (!sid && !(user.isbanned & BAN.GAME)) {
             const invitation = await findPendingInvitation(user.id, gameVariant)
             if (invitation) {
                 logger.info(
@@ -819,8 +819,8 @@ async function userAnswer(req, res) {
 
     ctx.uid = user.id
 
-    // Check if user is banned
-    if (user.isbanned) {
+    // Check if user is banned from playing
+    if (user.isbanned & BAN.GAME) {
         logger.warn(ctx, "User is banned, refusing answer")
         return res.json({
             type: "banned",

@@ -695,6 +695,24 @@ describe("services/navalclash/socialService", () => {
             })
         })
 
+        it("should allow chat-banned user to answer invitations (isbanned=16)", async () => {
+            mockExecute.mockResolvedValueOnce([
+                [{ id: 1, name: "ChatBanned", isbanned: 16 }],
+            ])
+
+            const req = {
+                requestId: "test",
+                body: { u: testUser, ans: true, usid: "1000" },
+            }
+
+            await userAnswer(req, mockRes)
+
+            // Chat ban should NOT trigger banned response (only game ban does)
+            expect(mockRes.json).not.toHaveBeenCalledWith(
+                expect.objectContaining({ type: "banned" })
+            )
+        })
+
         it("should send acceptance message to inviter", async () => {
             mockExecute
                 .mockResolvedValueOnce([
@@ -959,6 +977,25 @@ describe("services/navalclash/socialService", () => {
                 expect.stringContaining("target_rival_id"),
                 expect.anything()
             )
+        })
+
+        it("should check invitations for chat-banned user (isbanned=16)", async () => {
+            mockExecute
+                .mockResolvedValueOnce([
+                    [{ id: 10, name: "ChatBanned", isbanned: 16 }],
+                ]) // User lookup
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE users (status)
+                .mockResolvedValueOnce([[]]) // No pending invitations
+
+            const req = {
+                requestId: "test",
+                body: { u: testUser, var: 1 },
+            }
+
+            await userMarker(req, mockRes)
+
+            // Chat ban should NOT block invitation checks (only game ban does)
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "uok" })
         })
 
         it("should return uok when no pending invitation", async () => {

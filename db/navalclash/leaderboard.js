@@ -25,10 +25,10 @@ async function dbGetTopScores(gameVariant, limitPerType = 50) {
         // Use query() instead of execute() to avoid prepared statement issues with LIMIT
         // Exclude banned users (isbanned = 1)
         const [androidRows] = await pool.query(
-            `SELECT ts.*, u.name, u.face, u.uuid,
-                    o.name AS opponent_name, o.face AS opponent_face
+            `SELECT ts.*, u.name, u.face, u.uuid, u.lang, u.version AS user_version,
+                    o.name AS opponent_name, o.face AS opponent_face, o.version AS opponent_version
              FROM topscores ts
-             JOIN users u ON u.id = ts.user_id AND u.isbanned = 0
+             JOIN users u ON u.id = ts.user_id AND (u.isbanned & 9) = 0
              LEFT JOIN users o ON o.id = ts.opponent_id
              INNER JOIN (
                  SELECT user_id, MAX(score) as max_score
@@ -45,10 +45,10 @@ async function dbGetTopScores(gameVariant, limitPerType = 50) {
         // Fetch top scores vs Human (game_type IN (2,3,4) - bt, web, passplay)
         // Exclude banned users (isbanned = 1)
         const [humanRows] = await pool.query(
-            `SELECT ts.*, u.name, u.face, u.uuid,
-                    o.name AS opponent_name, o.face AS opponent_face
+            `SELECT ts.*, u.name, u.face, u.uuid, u.lang, u.version AS user_version,
+                    o.name AS opponent_name, o.face AS opponent_face, o.version AS opponent_version
              FROM topscores ts
-             JOIN users u ON u.id = ts.user_id AND u.isbanned = 0
+             JOIN users u ON u.id = ts.user_id AND (u.isbanned & 9) = 0
              LEFT JOIN users o ON o.id = ts.opponent_id
              INNER JOIN (
                  SELECT user_id, MAX(score) as max_score
@@ -89,10 +89,10 @@ async function dbGetTopScoresByType(gameVariant, gameType, limit) {
         // Note: Use query() instead of execute() to avoid prepared statement issues with LIMIT
         // Exclude banned users (isbanned = 1)
         const [rows] = await pool.query(
-            `SELECT ts.*, u.name, u.face, u.uuid,
-                    o.name AS opponent_name, o.face AS opponent_face
+            `SELECT ts.*, u.name, u.face, u.uuid, u.lang, u.version AS user_version,
+                    o.name AS opponent_name, o.face AS opponent_face, o.version AS opponent_version
              FROM topscores ts
-             JOIN users u ON u.id = ts.user_id AND u.isbanned = 0
+             JOIN users u ON u.id = ts.user_id AND (u.isbanned & 9) = 0
              LEFT JOIN users o ON o.id = ts.opponent_id
              INNER JOIN (
                  SELECT user_id, MAX(score) as max_score
@@ -263,14 +263,14 @@ async function dbGetTopStars(gameVariant, limit) {
         // Note: Use query() instead of execute() to avoid prepared statement issues with LIMIT
         // Exclude banned users (isbanned = 1)
         const [rows] = await pool.query(
-            `SELECT id, name, uuid, \`rank\`, stars, face,
+            `SELECT id, name, uuid, \`rank\`, stars, face, lang,
                     games, gameswon, version,
                     games_android, games_bluetooth, games_web, games_passplay,
                     wins_android, wins_bluetooth, wins_web, wins_passplay
              FROM users
              WHERE stars > 0
                AND last_game_variant = ?
-               AND isbanned = 0
+               AND (isbanned & 9) = 0
              ORDER BY stars DESC, gameswon DESC
              LIMIT ?`,
             [gameVariant, Number(limit)]

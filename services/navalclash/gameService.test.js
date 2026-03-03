@@ -33,6 +33,7 @@ jest.mock("../../db/navalclash", () => ({
     dbGetTrainingShotCount: jest.fn().mockResolvedValue(0),
     dbFinalizeTrainingGame: jest.fn().mockResolvedValue(true),
     dbGetSessionUserId: jest.fn().mockResolvedValue(10),
+    dbFindUserById: jest.fn().mockResolvedValue({ id: 10, isbanned: 0 }),
 }))
 
 jest.mock("./weaponService", () => ({
@@ -51,6 +52,7 @@ const {
     dbGetTrainingShotCount,
     dbFinalizeTrainingGame,
     dbGetSessionUserId,
+    dbFindUserById,
 } = require("../../db/navalclash")
 
 const { trackShuffleUsage } = require("./weaponService")
@@ -748,6 +750,13 @@ describe("services/navalclash/gameService", () => {
     describe("chat", () => {
         const mockRes = { json: jest.fn() }
 
+        beforeEach(() => {
+            mockRes.json.mockClear()
+            sendMessage.mockClear()
+            dbGetSessionUserId.mockResolvedValue(10)
+            dbFindUserById.mockResolvedValue({ id: 10, isbanned: 0 })
+        })
+
         it("should send chat message", async () => {
             const req = {
                 requestId: "test",
@@ -759,6 +768,49 @@ describe("services/navalclash/gameService", () => {
             expect(sendMessage).toHaveBeenCalledWith(1000n, "chat", {
                 msg: "GG",
             })
+        })
+
+        it("should silently drop chat for chat-banned user (isbanned=16)", async () => {
+            dbFindUserById.mockResolvedValue({ id: 10, isbanned: 16 })
+
+            const req = {
+                requestId: "test",
+                body: { sid: "1000", msg: "spam" },
+            }
+
+            await chat(req, mockRes)
+
+            expect(sendMessage).not.toHaveBeenCalled()
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
+        })
+
+        it("should allow chat for scores-banned user (isbanned=8)", async () => {
+            dbFindUserById.mockResolvedValue({ id: 10, isbanned: 8 })
+
+            const req = {
+                requestId: "test",
+                body: { sid: "1000", msg: "hello" },
+            }
+
+            await chat(req, mockRes)
+
+            expect(sendMessage).toHaveBeenCalledWith(1000n, "chat", {
+                msg: "hello",
+            })
+        })
+
+        it("should silently drop chat for combined chat+scores ban (isbanned=24)", async () => {
+            dbFindUserById.mockResolvedValue({ id: 10, isbanned: 24 })
+
+            const req = {
+                requestId: "test",
+                body: { sid: "1000", msg: "hi" },
+            }
+
+            await chat(req, mockRes)
+
+            expect(sendMessage).not.toHaveBeenCalled()
+            expect(mockRes.json).toHaveBeenCalledWith({ type: "ok" })
         })
     })
 

@@ -11,7 +11,7 @@ const {
 } = require("../../db/navalclash")
 const { logger } = require("../../utils/logger")
 const { getMinVersion, isMaintenanceMode } = require("./setupService")
-const { MSG, SESSION_STATUS, VERSION } = require("./constants")
+const { MSG, SESSION_STATUS, VERSION, BAN } = require("./constants")
 
 /**
  * Checks if a version indicates an AI agent.
@@ -156,10 +156,11 @@ async function getOrCreateUser(conn, body) {
             `UPDATE users SET
                 logins = logins + 1,
                 version = ?,
+                lang = COALESCE(?, lang),
                 last_game_variant = ?,
                 updated_at = NOW()
              WHERE id = ?`,
-            [body.v || 0, body.var || 1, user.id]
+            [body.v || 0, body.u?.l || null, body.var || 1, user.id]
         )
         user.logins++
         return user
@@ -169,7 +170,7 @@ async function getOrCreateUser(conn, body) {
     const [result] = await conn.execute(
         `INSERT INTO users (name, uuid, version, lang, last_game_variant, logins)
          VALUES (?, ?, ?, ?, ?, 1)`,
-        [body.player, body.uuuid, body.v || 0, body.lang || null, body.var || 1]
+        [body.player, body.uuuid, body.v || 0, body.u?.l || null, body.var || 1]
     )
 
     const userId = result.insertId
@@ -759,7 +760,7 @@ async function connect(req, res) {
             await getOrCreateDevice(conn, user.id, body)
         }
 
-        if (user.isbanned) {
+        if (user.isbanned & BAN.GAME) {
             logger.warn(ctx, "User is banned, refusing connection")
             await conn.commit()
             // Return banned response with InfoMessage format expected by client

@@ -217,6 +217,71 @@ describe("services/navalclash/connectService", () => {
             expect(mockConnection.commit).toHaveBeenCalled()
         })
 
+        it("should allow chat-banned user to connect (isbanned=16)", async () => {
+            const req = {
+                body: { type: "connect", player: "ChatBanned", uuuid: "uuid" },
+            }
+
+            mockConnection.execute
+                .mockResolvedValueOnce([]) // SET TRANSACTION ISOLATION LEVEL
+                .mockResolvedValueOnce([[{ id: 1, isbanned: 16 }]]) // find user (chat ban only)
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // update login
+
+            await connect(req, mockRes)
+
+            // Should NOT return banned — chat ban does not block connect
+            expect(mockRes.json).not.toHaveBeenCalledWith(
+                expect.objectContaining({ type: "banned" })
+            )
+        })
+
+        it("should allow scores-banned user to connect (isbanned=8)", async () => {
+            const req = {
+                body: { type: "connect", player: "ScoresBanned", uuuid: "uuid" },
+            }
+
+            mockConnection.execute
+                .mockResolvedValueOnce([]) // SET TRANSACTION ISOLATION LEVEL
+                .mockResolvedValueOnce([[{ id: 1, isbanned: 8 }]]) // find user (scores ban only)
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // update login
+
+            await connect(req, mockRes)
+
+            // Should NOT return banned — scores ban does not block connect
+            expect(mockRes.json).not.toHaveBeenCalledWith(
+                expect.objectContaining({ type: "banned" })
+            )
+        })
+
+        it("should reject user with combined game+chat ban (isbanned=17)", async () => {
+            const req = {
+                body: {
+                    type: "connect",
+                    player: "DoubleBanned",
+                    uuuid: "uuid",
+                },
+            }
+
+            mockConnection.execute
+                .mockResolvedValueOnce([]) // SET TRANSACTION ISOLATION LEVEL
+                .mockResolvedValueOnce([[{ id: 1, isbanned: 17 }]]) // game + chat ban
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // update login
+
+            await connect(req, mockRes)
+
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "banned",
+                msg: {
+                    type: "msg",
+                    m: 9,
+                    p: [],
+                    c: false,
+                },
+                errcode: 1,
+            })
+            expect(mockConnection.commit).toHaveBeenCalled()
+        })
+
         it("should return maintenance when in maintenance mode", async () => {
             const req = {
                 body: { type: "connect", player: "Test", uuuid: "uuid" },

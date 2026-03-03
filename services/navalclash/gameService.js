@@ -10,6 +10,7 @@ const {
     dbGetTrainingShotCount,
     dbFinalizeTrainingGame,
     dbGetSessionUserId,
+    dbFindUserById,
 } = require("../../db/navalclash")
 const { sendMessage, cancelPollForSession } = require("./messageService")
 const { logger } = require("../../utils/logger")
@@ -30,6 +31,7 @@ const {
     MAX_RANK_DELTA,
     VERSION,
     FIELD,
+    BAN,
 } = require("./constants")
 
 // Rank thresholds (stars required for each rank - from UserBaseData.java)
@@ -1016,6 +1018,19 @@ async function chat(req, res) {
 
     const session = validateSession(sid, res, ctx)
     if (!session) return
+
+    // Check chat ban — silently drop message (matching old server behavior)
+    const userId = await dbGetSessionUserId(
+        session.baseSessionId,
+        session.player
+    )
+    if (userId) {
+        const user = await dbFindUserById(userId)
+        if (user && (user.isbanned & BAN.CHAT)) {
+            logger.debug(ctx, "Chat message dropped (user chat-banned)")
+            return res.json({ type: "ok" })
+        }
+    }
 
     return sendAndRespond(res, session.sessionId, "chat", { msg, u }, ctx)
 }

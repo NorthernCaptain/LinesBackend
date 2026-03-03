@@ -61,6 +61,8 @@ describe("services/navalclash/leaderboardService", () => {
                 name: "Winner",
                 face: 5,
                 uuid: "winner-uuid",
+                lang: "en_US",
+                user_version: 2035,
                 score: 5500,
                 time_spent_ms: 60000,
                 user_rank: 5,
@@ -70,6 +72,7 @@ describe("services/navalclash/leaderboardService", () => {
                 opponent_name: "Loser",
                 opponent_face: 3,
                 opponent_rank: 4,
+                opponent_version: 2035,
             }
 
             const result = serializeScore(row)
@@ -80,12 +83,15 @@ describe("services/navalclash/leaderboardService", () => {
                 time: 60000,
                 gtype: 2, // DB game_type 3 (web) -> client gtype 2 (web)
                 ct: new Date("2026-01-15T10:30:00Z").getTime(),
+                uv: 2035,
+                ov: 2035,
                 u: {
                     nam: "Winner",
                     i: 123,
                     rk: 5,
                     fc: 5,
                     id: "winner-uuid",
+                    l: "en_US",
                 },
                 o: {
                     nam: "Loser",
@@ -121,9 +127,12 @@ describe("services/navalclash/leaderboardService", () => {
 
             const result = serializeScore(row)
 
+            expect(result.uv).toBe(0)
+            expect(result.ov).toBe(0)
             expect(result.u.fc).toBe(0)
             expect(result.u.rk).toBe(0)
             expect(result.u.id).toBe("")
+            expect(result.u.l).toBe("--")
         })
     })
 
@@ -133,6 +142,8 @@ describe("services/navalclash/leaderboardService", () => {
                 id: 123,
                 name: "StarPlayer",
                 uuid: "star-uuid",
+                lang: "ru_RU",
+                version: 2035,
                 rank: 7,
                 stars: 5000,
                 face: 3,
@@ -152,9 +163,11 @@ describe("services/navalclash/leaderboardService", () => {
 
             expect(result.type).toBe("Score")
             expect(result.score).toBe(5000)
+            expect(result.uv).toBe(2035)
             expect(result.u.nam).toBe("StarPlayer")
             expect(result.u.i).toBe(123)
             expect(result.u.rk).toBe(7)
+            expect(result.u.l).toBe("ru_RU")
             expect(result.u.st).toBe(5000)
             expect(result.u.pld).toBe(200)
             expect(result.u.won).toBe(150)
@@ -173,6 +186,8 @@ describe("services/navalclash/leaderboardService", () => {
             const result = serializeStarEntry(row)
 
             expect(result.score).toBe(0)
+            expect(result.uv).toBe(0)
+            expect(result.u.l).toBe("--")
             expect(result.u.st).toBe(0)
             expect(result.u.ga).toEqual([0, 0, 0, 0])
             expect(result.u.wa).toEqual([0, 0, 0, 0])

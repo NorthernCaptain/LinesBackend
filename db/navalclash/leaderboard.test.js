@@ -84,6 +84,20 @@ describe("db/navalclash/leaderboard", () => {
 
             expect(result).toEqual([])
         })
+
+        it("should use bitmask filter to exclude game and scores bans", async () => {
+            mockQuery
+                .mockResolvedValueOnce([[]]) // Android query
+                .mockResolvedValueOnce([[]]) // Human query
+
+            await dbGetTopScores(1, 50)
+
+            // Both queries should use bitmask filter
+            expect(mockQuery).toHaveBeenCalledWith(
+                expect.stringContaining("(u.isbanned & 9) = 0"),
+                expect.anything()
+            )
+        })
     })
 
     describe("dbGetTopScoresByType", () => {
@@ -99,6 +113,19 @@ describe("db/navalclash/leaderboard", () => {
             expect(mockQuery).toHaveBeenCalledWith(
                 expect.stringContaining("game_type = ?"),
                 [1, 3, 1, 3, 10]
+            )
+        })
+    })
+
+    describe("dbGetTopScoresByType - bitmask filter", () => {
+        it("should use bitmask filter to exclude game and scores bans", async () => {
+            mockQuery.mockResolvedValue([[]])
+
+            await dbGetTopScoresByType(1, 3, 10)
+
+            expect(mockQuery).toHaveBeenCalledWith(
+                expect.stringContaining("(u.isbanned & 9) = 0"),
+                expect.anything()
             )
         })
     })
@@ -288,6 +315,17 @@ describe("db/navalclash/leaderboard", () => {
             expect(result).toEqual(mockUsers)
             expect(mockQuery).toHaveBeenCalledWith(
                 expect.stringContaining("ORDER BY stars DESC"),
+                [1, 50]
+            )
+        })
+
+        it("should use bitmask filter to exclude game and scores bans", async () => {
+            mockQuery.mockResolvedValue([[]])
+
+            await dbGetTopStars(1, 50)
+
+            expect(mockQuery).toHaveBeenCalledWith(
+                expect.stringContaining("(isbanned & 9) = 0"),
                 [1, 50]
             )
         })

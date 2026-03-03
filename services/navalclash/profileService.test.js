@@ -388,6 +388,23 @@ describe("profileService", () => {
             expect(mockRes.json).toHaveBeenCalledWith({ type: "uimpres" })
         })
 
+        it("should allow chat-banned user to import (isbanned=16)", async () => {
+            const chatBannedUser = {
+                id: 42,
+                name: "ChatBanned",
+                pin: 1234,
+                isbanned: 16,
+            }
+
+            mockReq = { body: { name: "ChatBanned", pin: "1234" } }
+            dbFindUserByNameAndPin.mockResolvedValue(chatBannedUser)
+
+            await importProfile(mockReq, mockRes)
+
+            // Chat ban should NOT block import (only game ban does)
+            expect(mockRes.json).not.toHaveBeenCalledWith({ type: "uimpres" })
+        })
+
         it("should return empty response on database error", async () => {
             mockReq = { body: { name: "TestPlayer", pin: "1234" } }
             dbFindUserByNameAndPin.mockRejectedValue(new Error("DB error"))

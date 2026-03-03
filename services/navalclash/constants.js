@@ -48,6 +48,19 @@ const MSG = {
 }
 
 // =============================================================================
+// BAN TYPE CONSTANTS (bitmask)
+// Stored in users.isbanned (SMALLINT UNSIGNED)
+// =============================================================================
+
+// Bits 1-2 are reserved for legacy compatibility (old server used values up to 4096)
+const BAN = {
+    GAME: 1, // Bit 0: cannot connect/play
+    SCORES: 8, // Bit 3: excluded from leaderboards
+    CHAT: 16, // Bit 4: cannot send chat messages (silent drop)
+    GAME_OR_SCORES: 1 | 8, // Combined mask for leaderboard exclusion (= 9)
+}
+
+// =============================================================================
 // SESSION STATUS CONSTANTS
 // Game session lifecycle states stored in game_sessions.status
 // =============================================================================
@@ -273,6 +286,9 @@ const FIELD = {
 // =============================================================================
 
 module.exports = {
+    // Ban types
+    BAN,
+
     // Message constants
     MSG,
 

@@ -33,6 +33,8 @@ function serializeScore(row) {
         time: row.time_spent_ms || 30001, // Fallback to minimum valid time if missing
         gtype: dbGtypeToClient(row.game_type), // Convert DB (1-4) to client (0-3)
         ct: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+        uv: row.user_version || 0,
+        ov: row.opponent_version || 0,
         // Winner player info
         u: {
             nam: row.name,
@@ -40,6 +42,7 @@ function serializeScore(row) {
             rk: row.user_rank || 0,
             fc: row.face || 0,
             id: row.uuid || "",
+            l: row.lang || "--",
         },
     }
 
@@ -71,12 +74,14 @@ function serializeStarEntry(row) {
         time: 30001, // Minimum valid time (client requires >= 30000ms)
         gtype: 3, // Default to web
         ct: Date.now(),
+        uv: row.version || 0,
         u: {
             nam: row.name,
             i: row.id,
             rk: row.rank || 0,
             fc: row.face || 0,
             id: row.uuid || "",
+            l: row.lang || "--",
             st: row.stars || 0,
             pld: row.games || 0,
             won: row.gameswon || 0,

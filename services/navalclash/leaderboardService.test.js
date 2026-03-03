@@ -173,6 +173,8 @@ describe("services/navalclash/leaderboardService", () => {
 
             expect(result.type).toBe("Score")
             expect(result.score).toBe(5000)
+            // 150 wins, 50 losses → luck = floor(10*150/50) = 30 → time = 30000 + 300
+            expect(result.time).toBe(30300)
             expect(result.uv).toBe(2035)
             expect(result.u.nam).toBe("StarPlayer")
             expect(result.u.dev).toBe("")
@@ -198,6 +200,8 @@ describe("services/navalclash/leaderboardService", () => {
             const result = serializeStarEntry(row)
 
             expect(result.score).toBe(0)
+            // 0 wins, max(0,1)=1 loss → luck = 0 → time = 30000
+            expect(result.time).toBe(30000)
             expect(result.uv).toBe(0)
             expect(result.u.dev).toBe("")
             expect(result.u.ut).toBe(2)
@@ -205,6 +209,38 @@ describe("services/navalclash/leaderboardService", () => {
             expect(result.u.st).toBe(0)
             expect(result.u.ga).toEqual([0, 0, 0, 0])
             expect(result.u.wa).toEqual([0, 0, 0, 0])
+        })
+
+        it("should encode luck correctly for various win/loss ratios", () => {
+            // 10 wins, 0 losses → losses clamped to 1 → luck = 100 → time = 31000
+            const undefeated = serializeStarEntry({
+                id: 1,
+                name: "A",
+                games: 10,
+                gameswon: 10,
+            })
+            // Client displays: (31000 - 30000) / 100 = 10.0
+            expect(undefeated.time).toBe(31000)
+
+            // 7 wins, 3 losses → luck = floor(10*7/3) = 23 → time = 30230
+            const good = serializeStarEntry({
+                id: 2,
+                name: "B",
+                games: 10,
+                gameswon: 7,
+            })
+            // Client displays: (30230 - 30000) / 100 = 2.3
+            expect(good.time).toBe(30230)
+
+            // 1 win, 9 losses → luck = floor(10*1/9) = 1 → time = 30010
+            const bad = serializeStarEntry({
+                id: 3,
+                name: "C",
+                games: 10,
+                gameswon: 1,
+            })
+            // Client displays: (30010 - 30000) / 100 = 0.1
+            expect(bad.time).toBe(30010)
         })
     })
 

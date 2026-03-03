@@ -73,10 +73,17 @@ function serializeScore(row) {
  * @returns {Object} Serialized star ranking entry
  */
 function serializeStarEntry(row) {
+    // Client displays luck as: (time - 30000) / 100.0
+    // Luck = win/loss ratio with one decimal: floor(10 * wins / losses) / 10
+    // Encode into time field: 30000 + floor(10 * wins / losses) * 10
+    const wins = row.gameswon || 0
+    const losses = Math.max((row.games || 0) - wins, 1)
+    const luckEncoded = 30000 + Math.floor((10.0 * wins) / losses) * 10
+
     return {
         type: "Score",
         score: row.stars || 0,
-        time: 30001, // Minimum valid time (client requires >= 30000ms)
+        time: luckEncoded,
         gtype: 3, // Default to web
         ct: Date.now(),
         uv: row.version || 0,

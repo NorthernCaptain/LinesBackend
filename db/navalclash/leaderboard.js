@@ -23,7 +23,7 @@ async function dbGetTopScores(gameVariant, limitPerType = 50) {
     try {
         // Fetch top scores vs Android (game_type = 1)
         // Use query() instead of execute() to avoid prepared statement issues with LIMIT
-        // Exclude banned users (isbanned = 1)
+        // Exclude users banned from game or scores (BAN.GAME | BAN.SCORES = 9)
         const [androidRows] = await pool.query(
             `SELECT ts.*, u.name, u.face, u.uuid, u.lang, u.version AS user_version,
                     o.name AS opponent_name, o.face AS opponent_face, o.version AS opponent_version
@@ -43,7 +43,7 @@ async function dbGetTopScores(gameVariant, limitPerType = 50) {
         )
 
         // Fetch top scores vs Human (game_type IN (2,3,4) - bt, web, passplay)
-        // Exclude banned users (isbanned = 1)
+        // Exclude users banned from game or scores (BAN.GAME | BAN.SCORES = 9)
         const [humanRows] = await pool.query(
             `SELECT ts.*, u.name, u.face, u.uuid, u.lang, u.version AS user_version,
                     o.name AS opponent_name, o.face AS opponent_face, o.version AS opponent_version
@@ -87,7 +87,7 @@ async function dbGetTopScores(gameVariant, limitPerType = 50) {
 async function dbGetTopScoresByType(gameVariant, gameType, limit) {
     try {
         // Note: Use query() instead of execute() to avoid prepared statement issues with LIMIT
-        // Exclude banned users (isbanned = 1)
+        // Exclude users banned from game or scores (BAN.GAME | BAN.SCORES = 9)
         const [rows] = await pool.query(
             `SELECT ts.*, u.name, u.face, u.uuid, u.lang, u.version AS user_version,
                     o.name AS opponent_name, o.face AS opponent_face, o.version AS opponent_version
@@ -261,7 +261,7 @@ async function dbGetUserLeaderboardRank(userId, gameVariant) {
 async function dbGetTopStars(gameVariant, limit) {
     try {
         // Note: Use query() instead of execute() to avoid prepared statement issues with LIMIT
-        // Exclude banned users (isbanned = 1)
+        // Exclude users banned from game or scores (BAN.GAME | BAN.SCORES = 9)
         const [rows] = await pool.query(
             `SELECT id, name, uuid, \`rank\`, stars, face, lang,
                     games, gameswon, version,

@@ -235,6 +235,24 @@ describe("services/navalclash/connectService", () => {
             )
         })
 
+        it("should allow scores-banned user to connect (isbanned=8)", async () => {
+            const req = {
+                body: { type: "connect", player: "ScoresBanned", uuuid: "uuid" },
+            }
+
+            mockConnection.execute
+                .mockResolvedValueOnce([]) // SET TRANSACTION ISOLATION LEVEL
+                .mockResolvedValueOnce([[{ id: 1, isbanned: 8 }]]) // find user (scores ban only)
+                .mockResolvedValueOnce([{ affectedRows: 1 }]) // update login
+
+            await connect(req, mockRes)
+
+            // Should NOT return banned — scores ban does not block connect
+            expect(mockRes.json).not.toHaveBeenCalledWith(
+                expect.objectContaining({ type: "banned" })
+            )
+        })
+
         it("should reject user with combined game+chat ban (isbanned=17)", async () => {
             const req = {
                 body: {

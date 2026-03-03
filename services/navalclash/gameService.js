@@ -11,7 +11,7 @@ const {
     dbFinalizeTrainingGame,
     dbGetSessionUserId,
 } = require("../../db/navalclash")
-const { sendMessage } = require("./messageService")
+const { sendMessage, cancelPollForSession } = require("./messageService")
 const { logger } = require("../../utils/logger")
 const {
     validateWeaponPlacement,
@@ -889,6 +889,8 @@ async function handlePlayerLeft(req, res, session, msg, u, ctx) {
                     session.baseSessionId.toString(),
                 ]
             )
+            // Cancel pending poll so client gets errcode 5 immediately
+            cancelPollForSession(session.sessionId)
             return res.json({ type: "ok" })
         }
 

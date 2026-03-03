@@ -57,6 +57,7 @@ const { trackShuffleUsage } = require("./weaponService")
 
 jest.mock("./messageService", () => ({
     sendMessage: jest.fn().mockResolvedValue(1),
+    cancelPollForSession: jest.fn(),
 }))
 
 jest.mock("./leaderboardService", () => ({

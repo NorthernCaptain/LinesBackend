@@ -27,11 +27,13 @@ const {
     poll,
     send,
     sendMessage,
+    cancelPollForSession,
     getOpponentSessionId,
     fetchNextMessage,
     deleteAcknowledgedMessages,
     getPendingPollCount,
     clearPendingPolls,
+    handleSessionClosed,
     checkDeadOpponent,
 } = require("./messageService")
 
@@ -464,6 +466,91 @@ describe("services/navalclash/messageService", () => {
             // Just ensure it doesn't throw
             expect(() => clearPendingPolls()).not.toThrow()
             expect(getPendingPollCount()).toBe(0)
+        })
+    })
+
+    describe("handleSessionClosed", () => {
+        it("should resolve pending poll with errcode 5", async () => {
+            const mockRes = { json: jest.fn() }
+
+            // Set up a long poll (no messages, no dead opponent)
+            mockExecute.mockResolvedValueOnce([[]]) // fetchNextMessage - empty
+            mockDbGetOpponentLastSeen.mockResolvedValueOnce({ status: 0 })
+            mockExecute.mockResolvedValueOnce([[]]) // race check - empty
+
+            const req = {
+                body: { sid: "1000", pollId: 1 },
+                requestId: "req-close-1",
+            }
+            await poll(req, mockRes)
+
+            expect(mockRes.json).not.toHaveBeenCalled()
+            expect(getPendingPollCount()).toBe(1)
+
+            handleSessionClosed("req-close-1")
+
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "error",
+                errcode: 5,
+                reason: "Session terminated",
+            })
+            expect(getPendingPollCount()).toBe(0)
+        })
+
+        it("should not fail when poll does not exist", () => {
+            expect(() =>
+                handleSessionClosed("non-existent")
+            ).not.toThrow()
+        })
+
+        it("should not respond twice if already responded", async () => {
+            const mockRes = { json: jest.fn() }
+
+            mockExecute.mockResolvedValueOnce([[]]) // fetchNextMessage
+            mockDbGetOpponentLastSeen.mockResolvedValueOnce({ status: 0 })
+            mockExecute.mockResolvedValueOnce([[]]) // race check
+
+            const req = {
+                body: { sid: "1000", pollId: 1 },
+                requestId: "req-close-2",
+            }
+            await poll(req, mockRes)
+
+            handleSessionClosed("req-close-2")
+            handleSessionClosed("req-close-2")
+
+            expect(mockRes.json).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    describe("cancelPollForSession", () => {
+        it("should resolve local poll with errcode 5 in non-cluster mode", async () => {
+            const mockRes = { json: jest.fn() }
+
+            mockExecute.mockResolvedValueOnce([[]]) // fetchNextMessage
+            mockDbGetOpponentLastSeen.mockResolvedValueOnce({ status: 0 })
+            mockExecute.mockResolvedValueOnce([[]]) // race check
+
+            const req = {
+                body: { sid: "1000", pollId: 1 },
+                requestId: "req-cancel-1",
+            }
+            await poll(req, mockRes)
+
+            expect(getPendingPollCount()).toBe(1)
+
+            cancelPollForSession(1000n)
+
+            expect(mockRes.json).toHaveBeenCalledWith({
+                type: "error",
+                errcode: 5,
+                reason: "Session terminated",
+            })
+            expect(getPendingPollCount()).toBe(0)
+        })
+
+        it("should not fail when no poll exists for session", () => {
+            expect(() => cancelPollForSession(9999n)).not.toThrow()
         })
     })
 })

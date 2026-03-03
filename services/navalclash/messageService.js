@@ -160,6 +160,72 @@ function handleCancel(requestId) {
     pollData.res.json({ type: "empty" })
 }
 
+/**
+ * Handles SESSION_CLOSED message from master.
+ * Resolves the pending poll with errcode 5 so the client reconnects immediately.
+ *
+ * @param {string} requestId - Request ID
+ * @returns {void}
+ */
+function handleSessionClosed(requestId) {
+    const pollData = pendingPolls.get(requestId)
+    if (!pollData) return
+
+    if (pollData.responded) return
+    pollData.responded = true
+
+    logger.debug(
+        { sid: pollData.sessionId, reqId: requestId },
+        "SESSION_CLOSED received, returning errcode 5"
+    )
+
+    clearTimeout(pollData.timer)
+    pendingPolls.delete(requestId)
+
+    if (cluster.isWorker) {
+        process.send({
+            nc: true,
+            type: "UNSUBSCRIBE",
+            requestId,
+        })
+    }
+
+    pollData.res.json({
+        type: "error",
+        errcode: 5,
+        reason: "Session terminated",
+    })
+}
+
+/**
+ * Cancels any pending poll for the given session ID with errcode 5.
+ * In cluster mode, sends IPC to master to route to the correct worker.
+ * In non-cluster mode, resolves the local poll directly.
+ *
+ * @param {BigInt|string} sessionId - Session ID (with player bit)
+ * @returns {void}
+ */
+function cancelPollForSession(sessionId) {
+    const sidStr = sessionId.toString()
+
+    if (cluster.isWorker) {
+        process.send({
+            nc: true,
+            type: "CANCEL_SESSION",
+            sessionId: sidStr,
+        })
+        return
+    }
+
+    // Non-cluster: find and resolve locally
+    for (const [reqId, pollData] of pendingPolls) {
+        if (pollData.sessionId.toString() === sidStr) {
+            handleSessionClosed(reqId)
+            return
+        }
+    }
+}
+
 let workerHandlersSetup = false
 
 /**
@@ -180,6 +246,9 @@ function setupWorkerHandlers() {
                 break
             case "CANCEL":
                 handleCancel(msg.requestId)
+                break
+            case "SESSION_CLOSED":
+                handleSessionClosed(msg.requestId)
                 break
         }
     })
@@ -523,6 +592,7 @@ module.exports = {
     poll,
     send,
     sendMessage,
+    cancelPollForSession,
     getOpponentSessionId,
     fetchNextMessage,
     deleteAcknowledgedMessages,
@@ -531,5 +601,6 @@ module.exports = {
     // Exported for testing
     handleWake,
     handleCancel,
+    handleSessionClosed,
     checkDeadOpponent,
 }

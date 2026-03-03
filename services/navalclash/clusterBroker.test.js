@@ -8,6 +8,7 @@ const {
     handleSubscribe,
     handleUnsubscribe,
     handlePublish,
+    handleCancelSession,
     getOpponentSessionId,
     getActivePollCount,
     clearAllPolls,
@@ -218,6 +219,54 @@ describe("services/navalclash/clusterBroker", () => {
             expect(mockWorker1.send).not.toHaveBeenCalledWith(
                 expect.objectContaining({ type: "WAKE" })
             )
+        })
+    })
+
+    describe("handleCancelSession", () => {
+        it("should send SESSION_CLOSED to worker holding the poll", () => {
+            const mockWorker = { id: 1, send: jest.fn() }
+            const cluster = require("cluster")
+            cluster.workers = { 1: mockWorker }
+
+            handleSubscribe(mockWorker, {
+                sessionId: "1000",
+                pollId: 1,
+                requestId: "req-1",
+            })
+
+            expect(getActivePollCount()).toBe(1)
+
+            handleCancelSession({ sessionId: "1000" })
+
+            expect(mockWorker.send).toHaveBeenCalledWith({
+                nc: true,
+                type: "SESSION_CLOSED",
+                requestId: "req-1",
+            })
+            expect(getActivePollCount()).toBe(0)
+        })
+
+        it("should not fail when no poll exists for session", () => {
+            expect(() => {
+                handleCancelSession({ sessionId: "9999" })
+            }).not.toThrow()
+        })
+
+        it("should handle missing worker gracefully", () => {
+            const mockWorker = { id: 1, send: jest.fn() }
+            const cluster = require("cluster")
+            cluster.workers = {} // Worker gone
+
+            handleSubscribe(mockWorker, {
+                sessionId: "1000",
+                pollId: 1,
+                requestId: "req-1",
+            })
+
+            expect(() => {
+                handleCancelSession({ sessionId: "1000" })
+            }).not.toThrow()
+            expect(getActivePollCount()).toBe(0)
         })
     })
 

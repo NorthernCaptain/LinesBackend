@@ -1026,7 +1026,7 @@ async function chat(req, res) {
     )
     if (userId) {
         const user = await dbFindUserById(userId)
-        if (user && (user.isbanned & BAN.CHAT)) {
+        if (user && user.isbanned & BAN.CHAT) {
             logger.debug(ctx, "Chat message dropped (user chat-banned)")
             return res.json({ type: "ok" })
         }

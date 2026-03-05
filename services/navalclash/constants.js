@@ -272,6 +272,19 @@ const TIMING = {
 }
 
 // =============================================================================
+// LICENSE STATUS CONSTANTS
+// Google Play license verification states stored in devices.license_status
+// =============================================================================
+
+const LICENSE = {
+    NOT_SET: null, // Not yet checked
+    LICENSED: 1, // Valid license
+    NOT_LICENSED: 2, // No valid license
+    RETRY: 3, // Temporary error, retry later
+    NON_APPLICABLE: 4, // Not applicable (e.g., non-Play install)
+}
+
+// =============================================================================
 // FIELD ENCODING CONSTANTS
 // For battlefield encoding/decoding
 // =============================================================================
@@ -322,6 +335,9 @@ module.exports = {
 
     // Timing
     TIMING,
+
+    // License
+    LICENSE,
 
     // Field encoding
     FIELD,

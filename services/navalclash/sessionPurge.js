@@ -3,13 +3,12 @@
  * Copyright (c) 2026 NorthernCaptain
  * All rights reserved.
  *
- * Background session purge job.
- * Runs in the cluster master process to clean up stale sessions
- * where players have stopped polling.
+ * Session purge logic.
+ * Cleans up stale sessions where players have stopped polling.
+ * Scheduling is handled by purgeScheduler.js.
  */
 
 const { pool } = require("../../db/navalclash/pool")
-const { TIMING } = require("./constants")
 
 const SESSION_STATUS = {
     FINISHED_TIMED_OUT_WAITING: 5,
@@ -98,47 +97,6 @@ async function purgeStaleSessions(purgeThresholdSec) {
     return closed
 }
 
-let purgeInterval = null
-
-/**
- * Starts the background session purge job.
- * Should be called from the cluster master process.
- *
- * @returns {void}
- */
-function startSessionPurge() {
-    const intervalMs = TIMING.SESSION_PURGE_INTERVAL_MS
-    const thresholdSec = Math.floor(TIMING.SESSION_PURGE_MS / 1000)
-
-    console.log(
-        `Session purge: starting (interval=${intervalMs}ms, threshold=${thresholdSec}s)`
-    )
-
-    purgeInterval = setInterval(async () => {
-        const closed = await purgeStaleSessions(thresholdSec)
-        if (closed > 0) {
-            console.log(`Session purge: closed ${closed} stale session(s)`)
-        }
-    }, intervalMs)
-
-    // Don't block process exit
-    purgeInterval.unref()
-}
-
-/**
- * Stops the background session purge job.
- *
- * @returns {void}
- */
-function stopSessionPurge() {
-    if (purgeInterval) {
-        clearInterval(purgeInterval)
-        purgeInterval = null
-    }
-}
-
 module.exports = {
     purgeStaleSessions,
-    startSessionPurge,
-    stopSessionPurge,
 }

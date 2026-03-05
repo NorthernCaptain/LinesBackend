@@ -69,6 +69,7 @@ function router(app) {
         importProfile,
         syncProfile,
     } = require("../services/navalclash/profileService")
+    const { verifyLicense } = require("../services/navalclash/licenseService")
 
     // Phase 1: Connect & Users
     r.post("/connect", connect)
@@ -107,6 +108,9 @@ function router(app) {
     r.post("/ils", getItemsList)
     r.post("/iby", internalBuy)
     r.post("/inventory", getInventory)
+
+    // License Verification
+    r.post("/lvl", verifyLicense)
 
     // Phase 6: Profile Management
     r.post("/uexp", exportProfile)

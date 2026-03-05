@@ -4,9 +4,16 @@
  * All rights reserved.
  */
 
-const { pool, dbUpdateLocalStats } = require("../../db/navalclash")
+const {
+    pool,
+    dbUpdateLocalStats,
+    dbFindDeviceByAndroidId,
+    dbCreateDevice,
+    dbSaveLicenseNonce,
+} = require("../../db/navalclash")
 const { logger } = require("../../utils/logger")
 const { buildMdfMessage } = require("./gameService")
+const { generateLicenseNonce } = require("./licenseService")
 const { sendMessage } = require("./messageService")
 const { MSG, LIST_TYPE, RIVAL_TYPE, USER_STATUS, BAN } = require("./constants")
 
@@ -623,6 +630,40 @@ async function findUserBySession(sessionId) {
 }
 
 /**
+ * Ensures a device record exists for the given Android ID.
+ * Creates one from device info JSON if not found.
+ *
+ * @param {string} androidId - Android device ID
+ * @param {Object} deviceInfo - Device info JSON from client (di field)
+ * @param {number} version - App version
+ * @returns {Promise<Object|null>} Device object or null on error
+ */
+async function getOrCreateDeviceFromMarker(androidId, deviceInfo, version) {
+    let device = await dbFindDeviceByAndroidId(androidId)
+    if (device) return device
+
+    if (!deviceInfo) return null
+
+    const deviceId = await dbCreateDevice({
+        androidId,
+        device: deviceInfo.device || null,
+        model: deviceInfo.model || null,
+        manufacturer: deviceInfo.manufacturer || null,
+        product: deviceInfo.product || null,
+        osVersion: deviceInfo.osVersion || null,
+        dispDpi: deviceInfo.dispDpi || null,
+        dispHeight: deviceInfo.dispHeight || null,
+        dispWidth: deviceInfo.dispWidth || null,
+        dispScale: deviceInfo.dispScale || null,
+        dispSize: deviceInfo.dispSize || null,
+        appVersion: version || 0,
+    })
+
+    if (!deviceId) return null
+    return await dbFindDeviceByAndroidId(androidId)
+}
+
+/**
  * User marker endpoint - updates user presence/status.
  * Called periodically when player is in menus or setup screens.
  *
@@ -644,6 +685,22 @@ async function userMarker(req, res) {
     const ctx = { reqId: req.requestId, tp, pur: !!pur, var: gameVariant }
 
     logger.debug(ctx, "User marker request")
+
+    // Handle license nonce request (piggybacked on umarker)
+    let licenseNonce = null
+    if (req.body.lnr === 1 && req.body.did) {
+        try {
+            await getOrCreateDeviceFromMarker(req.body.did, req.body.di, v)
+            licenseNonce = generateLicenseNonce()
+            await dbSaveLicenseNonce(req.body.did, licenseNonce)
+            logger.info(
+                { ...ctx, did: req.body.did, nonce: licenseNonce },
+                "License nonce generated"
+            )
+        } catch (error) {
+            logger.error(ctx, "License nonce generation error:", error.message)
+        }
+    }
 
     // Try to find user - first by session ID, then by uuuid/u.id
     let user = null
@@ -668,7 +725,11 @@ async function userMarker(req, res) {
             ctx,
             "User marker - user not found (will be created on connect)"
         )
-        return res.json({ type: "uok" })
+        const response = { type: "uok" }
+        if (licenseNonce !== null) {
+            response.ln = licenseNonce
+        }
+        return res.json(response)
     }
 
     ctx.uid = user.id
@@ -696,7 +757,7 @@ async function userMarker(req, res) {
                 )
 
                 // Return uask response with invitation details
-                return res.json({
+                const uaskResponse = {
                     type: "uask",
                     usid: invitation.sessionId.toString(),
                     u: {
@@ -716,7 +777,11 @@ async function userMarker(req, res) {
                         p: [invitation.inviter.name],
                         c: true, // needConfirm = true
                     },
-                })
+                }
+                if (licenseNonce !== null) {
+                    uaskResponse.ln = licenseNonce
+                }
+                return res.json(uaskResponse)
             }
         }
 
@@ -739,8 +804,7 @@ async function userMarker(req, res) {
             } else {
                 // Keep session fresh — update per-player last_seen
                 const player = Number(sessionId & 1n)
-                const column =
-                    player === 0 ? "last_seen_one" : "last_seen_two"
+                const column = player === 0 ? "last_seen_one" : "last_seen_two"
                 await pool.execute(
                     `UPDATE game_sessions
                      SET ${column} = NOW(3)
@@ -769,14 +833,22 @@ async function userMarker(req, res) {
                         { ...ctx, we: mdf.u?.we, coins: mdf.u?.an },
                         "Returning uok with embedded mdf"
                     )
-                    return res.json({ type: "uok", mdf })
+                    const mdfResponse = { type: "uok", mdf }
+                    if (licenseNonce !== null) {
+                        mdfResponse.ln = licenseNonce
+                    }
+                    return res.json(mdfResponse)
                 }
             } finally {
                 conn.release()
             }
         }
 
-        return res.json({ type: "uok" })
+        const okResponse = { type: "uok" }
+        if (licenseNonce !== null) {
+            okResponse.ln = licenseNonce
+        }
+        return res.json(okResponse)
     } catch (error) {
         logger.error(ctx, "userMarker error:", error.message)
         return res.json({ type: "error", reason: "Server error" })

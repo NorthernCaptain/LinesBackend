@@ -461,11 +461,7 @@ async function findRivalWaitingSession(conn, rivalId, userId, gameVariant) {
  * @param {number} gameVariant - Game variant
  * @returns {Promise<Object|null>} Waiting session or null
  */
-async function findPersonalSessionTargetingMe(
-    conn,
-    userId,
-    gameVariant
-) {
+async function findPersonalSessionTargetingMe(conn, userId, gameVariant) {
     const [rows] = await conn.execute(
         `SELECT gs.*, u.name as user_one_name
          FROM game_sessions gs
@@ -491,12 +487,7 @@ async function findPersonalSessionTargetingMe(
  * @param {number} version - Joiner's app version
  * @returns {Promise<Object|null>} Waiting session or null
  */
-async function findRandomWaitingSession(
-    conn,
-    userId,
-    gameVariant,
-    version
-) {
+async function findRandomWaitingSession(conn, userId, gameVariant, version) {
     const joinerIsAgent = isAgentVersion(version)
 
     let rows

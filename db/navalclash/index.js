@@ -15,6 +15,7 @@ const shop = require("./shop")
 const training = require("./training")
 const weapons = require("./weapons")
 const keys = require("./keys")
+const licenses = require("./licenses")
 
 module.exports = {
     pool,
@@ -28,4 +29,5 @@ module.exports = {
     ...training,
     ...weapons,
     ...keys,
+    ...licenses,
 }

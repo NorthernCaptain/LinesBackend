@@ -455,11 +455,7 @@ async function poll(req, res) {
         }
 
         // No message — check if opponent is dead (IN_PROGRESS sessions only)
-        const deadOpponent = await checkDeadOpponent(
-            baseSessionId,
-            player,
-            ctx
-        )
+        const deadOpponent = await checkDeadOpponent(baseSessionId, player, ctx)
         if (deadOpponent) {
             return res.json(deadOpponent)
         }

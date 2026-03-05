@@ -237,7 +237,11 @@ describe("services/navalclash/connectService", () => {
 
         it("should allow scores-banned user to connect (isbanned=8)", async () => {
             const req = {
-                body: { type: "connect", player: "ScoresBanned", uuuid: "uuid" },
+                body: {
+                    type: "connect",
+                    player: "ScoresBanned",
+                    uuuid: "uuid",
+                },
             }
 
             mockConnection.execute
@@ -488,9 +492,7 @@ describe("services/navalclash/connectService", () => {
             expect(matchmakingCall).toBeTruthy()
             expect(matchmakingCall[0]).toContain("last_seen_one")
             expect(matchmakingCall[0]).toContain("INTERVAL 45 SECOND")
-            expect(matchmakingCall[0]).not.toContain(
-                "updated_at > DATE_SUB"
-            )
+            expect(matchmakingCall[0]).not.toContain("updated_at > DATE_SUB")
         })
 
         it("should handle database errors", async () => {
@@ -615,13 +617,9 @@ describe("services/navalclash/connectService", () => {
             }
 
             setupUserMocks()
-            mockConnection.execute.mockResolvedValueOnce([
-                [rivalSession],
-            ]) // find rival's session
+            mockConnection.execute.mockResolvedValueOnce([[rivalSession]]) // find rival's session
 
-            mockConnection.query.mockResolvedValueOnce([
-                { affectedRows: 1 },
-            ])
+            mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }])
 
             await connect(req, mockRes)
 
@@ -653,13 +651,9 @@ describe("services/navalclash/connectService", () => {
             }
 
             setupUserMocks()
-            mockConnection.execute.mockResolvedValueOnce([
-                [rivalRandomSession],
-            ]) // find rival's session
+            mockConnection.execute.mockResolvedValueOnce([[rivalRandomSession]]) // find rival's session
 
-            mockConnection.query.mockResolvedValueOnce([
-                { affectedRows: 1 },
-            ])
+            mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }])
 
             await connect(req, mockRes)
 
@@ -683,13 +677,9 @@ describe("services/navalclash/connectService", () => {
             }
 
             setupUserMocks()
-            mockConnection.execute.mockResolvedValueOnce([
-                [],
-            ]) // rival not waiting
+            mockConnection.execute.mockResolvedValueOnce([[]]) // rival not waiting
 
-            mockConnection.query.mockResolvedValueOnce([
-                { affectedRows: 1 },
-            ])
+            mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }])
 
             await connect(req, mockRes)
 
@@ -720,13 +710,9 @@ describe("services/navalclash/connectService", () => {
             // The query uses (target_rival_id IS NULL OR target_rival_id = ?),
             // so this session would NOT be returned by the DB.
             setupUserMocks()
-            mockConnection.execute.mockResolvedValueOnce([
-                [],
-            ]) // find rival's session - none matching
+            mockConnection.execute.mockResolvedValueOnce([[]]) // find rival's session - none matching
 
-            mockConnection.query.mockResolvedValueOnce([
-                { affectedRows: 1 },
-            ])
+            mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }])
 
             await connect(req, mockRes)
 
@@ -761,13 +747,9 @@ describe("services/navalclash/connectService", () => {
             }
 
             setupUserMocks()
-            mockConnection.execute.mockResolvedValueOnce([
-                [personalForMe],
-            ]) // personal session targeting me - found!
+            mockConnection.execute.mockResolvedValueOnce([[personalForMe]]) // personal session targeting me - found!
 
-            mockConnection.query.mockResolvedValueOnce([
-                { affectedRows: 1 },
-            ])
+            mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }])
 
             await connect(req, mockRes)
 
@@ -794,9 +776,7 @@ describe("services/navalclash/connectService", () => {
                 .mockResolvedValueOnce([[]]) // personal targeting me - none
                 .mockResolvedValueOnce([[]]) // random waiting - none
 
-            mockConnection.query.mockResolvedValueOnce([
-                { affectedRows: 1 },
-            ])
+            mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }])
 
             await connect(req, mockRes)
 
@@ -844,9 +824,7 @@ describe("services/navalclash/connectService", () => {
                 .mockResolvedValueOnce([[{ game_variant: 1 }]]) // lock
                 .mockResolvedValueOnce([[personalForAgent]]) // personal targeting agent
 
-            mockConnection.query.mockResolvedValueOnce([
-                { affectedRows: 1 },
-            ])
+            mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }])
 
             await connect(req, mockRes)
 
@@ -880,13 +858,9 @@ describe("services/navalclash/connectService", () => {
             }
 
             setupUserMocks()
-            mockConnection.execute.mockResolvedValueOnce([
-                [agentSession],
-            ]) // found agent's session
+            mockConnection.execute.mockResolvedValueOnce([[agentSession]]) // found agent's session
 
-            mockConnection.query.mockResolvedValueOnce([
-                { affectedRows: 1 },
-            ])
+            mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }])
 
             await connect(req, mockRes)
 

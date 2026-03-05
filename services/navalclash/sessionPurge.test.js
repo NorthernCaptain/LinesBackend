@@ -12,19 +12,11 @@ jest.mock("../../db/navalclash/pool", () => ({
     },
 }))
 
-const {
-    purgeStaleSessions,
-    startSessionPurge,
-    stopSessionPurge,
-} = require("./sessionPurge")
+const { purgeStaleSessions } = require("./sessionPurge")
 
 describe("services/navalclash/sessionPurge", () => {
     beforeEach(() => {
         jest.clearAllMocks()
-    })
-
-    afterEach(() => {
-        stopSessionPurge()
     })
 
     describe("purgeStaleSessions", () => {
@@ -70,9 +62,7 @@ describe("services/navalclash/sessionPurge", () => {
 
         it("should handle multiple stale sessions", async () => {
             mockExecute
-                .mockResolvedValueOnce([
-                    [{ id: "1000" }, { id: "1002" }],
-                ]) // 2 stale waiting
+                .mockResolvedValueOnce([[{ id: "1000" }, { id: "1002" }]]) // 2 stale waiting
                 .mockResolvedValueOnce([{ affectedRows: 1 }]) // close 1000
                 .mockResolvedValueOnce([{ affectedRows: 1 }]) // close 1002
                 .mockResolvedValueOnce([[{ id: "2000" }]]) // 1 stale playing
@@ -113,21 +103,6 @@ describe("services/navalclash/sessionPurge", () => {
             const closed = await purgeStaleSessions(120)
 
             expect(closed).toBe(0)
-        })
-    })
-
-    describe("startSessionPurge / stopSessionPurge", () => {
-        it("should start without throwing", () => {
-            expect(() => startSessionPurge()).not.toThrow()
-        })
-
-        it("should stop without throwing", () => {
-            startSessionPurge()
-            expect(() => stopSessionPurge()).not.toThrow()
-        })
-
-        it("should be safe to stop when not started", () => {
-            expect(() => stopSessionPurge()).not.toThrow()
         })
     })
 })

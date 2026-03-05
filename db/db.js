@@ -17,7 +17,7 @@ const oldsdb = mysql.createPool({
     password: process.env[`db_olds_password`],
     timezone: "Z",
     supportBigNumbers: true,
-    bigNumberStrings: false
+    bigNumberStrings: false,
 })
 
 const authdb = mysql.createPool({

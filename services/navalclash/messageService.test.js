@@ -286,10 +286,7 @@ describe("services/navalclash/messageService", () => {
             await poll(req, mockRes)
 
             // Player 1 (odd session ID), base session = 1000
-            expect(mockDbUpdatePlayerLastSeen).toHaveBeenCalledWith(
-                1000n,
-                1
-            )
+            expect(mockDbUpdatePlayerLastSeen).toHaveBeenCalledWith(1000n, 1)
         })
 
         it("should return message immediately if available", async () => {
@@ -412,10 +409,7 @@ describe("services/navalclash/messageService", () => {
             await send(req, mockRes)
 
             // Player 0 (even session ID), base session = 1000
-            expect(mockDbUpdatePlayerLastSeen).toHaveBeenCalledWith(
-                1000n,
-                0
-            )
+            expect(mockDbUpdatePlayerLastSeen).toHaveBeenCalledWith(1000n, 0)
         })
 
         it("should send message and return ok with msgId", async () => {
@@ -498,9 +492,7 @@ describe("services/navalclash/messageService", () => {
         })
 
         it("should not fail when poll does not exist", () => {
-            expect(() =>
-                handleSessionClosed("non-existent")
-            ).not.toThrow()
+            expect(() => handleSessionClosed("non-existent")).not.toThrow()
         })
 
         it("should not respond twice if already responded", async () => {

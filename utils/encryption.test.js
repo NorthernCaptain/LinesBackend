@@ -42,6 +42,7 @@ const {
     validateDeviceToken,
     tokenToBase64,
     tokenFromBase64,
+    getPlatformForKeyIndex,
 } = require("./encryption")
 
 afterAll(() => {
@@ -226,6 +227,28 @@ describe("utils/encryption", () => {
 
             expect(restored).toEqual(token)
             expect(base64.length).toBe(44)
+        })
+    })
+
+    describe("getPlatformForKeyIndex", () => {
+        it("should return android for indices 0-3", () => {
+            expect(getPlatformForKeyIndex(0)).toBe("android")
+            expect(getPlatformForKeyIndex(1)).toBe("android")
+            expect(getPlatformForKeyIndex(2)).toBe("android")
+            expect(getPlatformForKeyIndex(3)).toBe("android")
+        })
+
+        it("should return ios for indices 4-7", () => {
+            expect(getPlatformForKeyIndex(4)).toBe("ios")
+            expect(getPlatformForKeyIndex(5)).toBe("ios")
+            expect(getPlatformForKeyIndex(6)).toBe("ios")
+            expect(getPlatformForKeyIndex(7)).toBe("ios")
+        })
+
+        it("should return unknown for out-of-range indices", () => {
+            expect(getPlatformForKeyIndex(-1)).toBe("unknown")
+            expect(getPlatformForKeyIndex(8)).toBe("unknown")
+            expect(getPlatformForKeyIndex(99)).toBe("unknown")
         })
     })
 

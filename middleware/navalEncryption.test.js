@@ -185,6 +185,7 @@ describe("navalEncryption middleware", () => {
         mockDbGetDeviceKey.mockResolvedValue({
             key: aesKey,
             deviceUuid: "device-123",
+            platform: "android",
         })
         mockAesGcmDecrypt.mockReturnValue(
             Buffer.from(JSON.stringify(decryptedPayload))
@@ -195,6 +196,30 @@ describe("navalEncryption middleware", () => {
         expect(req.body).toEqual(decryptedPayload)
         expect(req.navalDeviceUuid).toBe("device-123")
         expect(req.navalKey).toEqual(aesKey)
+        expect(req.navalPlatform).toBe("android")
+        expect(next).toHaveBeenCalled()
+    })
+
+    it("should set navalPlatform to unknown when platform is null", async () => {
+        const aesKey = crypto.randomBytes(32)
+        const decryptedPayload = { type: "connect" }
+
+        req.body = Buffer.alloc(100)
+
+        mockValidateDeviceToken.mockReturnValue({ valid: true })
+        mockTokenToBase64.mockReturnValue("token-b64")
+        mockDbGetDeviceKey.mockResolvedValue({
+            key: aesKey,
+            deviceUuid: "device-456",
+            platform: null,
+        })
+        mockAesGcmDecrypt.mockReturnValue(
+            Buffer.from(JSON.stringify(decryptedPayload))
+        )
+
+        await navalEncryption(req, res, next)
+
+        expect(req.navalPlatform).toBe("unknown")
         expect(next).toHaveBeenCalled()
     })
 
@@ -211,6 +236,7 @@ describe("navalEncryption middleware", () => {
         mockDbGetDeviceKey.mockResolvedValue({
             key: aesKey,
             deviceUuid: "device-123",
+            platform: "ios",
         })
         mockAesGcmDecrypt.mockReturnValue(
             Buffer.from(JSON.stringify(decryptedPayload))

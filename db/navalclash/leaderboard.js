@@ -28,7 +28,9 @@ async function dbGetTopScores(gameVariant, limitPerType = 50) {
             `SELECT ts.*, u.name, u.face, u.uuid, u.lang, u.version AS user_version,
                     o.name AS opponent_name, o.face AS opponent_face, o.version AS opponent_version
              FROM topscores ts
-             JOIN users u ON u.id = ts.user_id AND (u.isbanned & 9) = 0
+             JOIN users u ON u.id = ts.user_id
+                  AND (u.isbanned & 9) = 0
+                  AND u.updated_at >= DATE_SUB(NOW(), INTERVAL 100 DAY)
              LEFT JOIN users o ON o.id = ts.opponent_id
              INNER JOIN (
                  SELECT user_id, MAX(score) as max_score
@@ -48,7 +50,9 @@ async function dbGetTopScores(gameVariant, limitPerType = 50) {
             `SELECT ts.*, u.name, u.face, u.uuid, u.lang, u.version AS user_version,
                     o.name AS opponent_name, o.face AS opponent_face, o.version AS opponent_version
              FROM topscores ts
-             JOIN users u ON u.id = ts.user_id AND (u.isbanned & 9) = 0
+             JOIN users u ON u.id = ts.user_id
+                  AND (u.isbanned & 9) = 0
+                  AND u.updated_at >= DATE_SUB(NOW(), INTERVAL 100 DAY)
              LEFT JOIN users o ON o.id = ts.opponent_id
              INNER JOIN (
                  SELECT user_id, MAX(score) as max_score
@@ -92,7 +96,9 @@ async function dbGetTopScoresByType(gameVariant, gameType, limit) {
             `SELECT ts.*, u.name, u.face, u.uuid, u.lang, u.version AS user_version,
                     o.name AS opponent_name, o.face AS opponent_face, o.version AS opponent_version
              FROM topscores ts
-             JOIN users u ON u.id = ts.user_id AND (u.isbanned & 9) = 0
+             JOIN users u ON u.id = ts.user_id
+                  AND (u.isbanned & 9) = 0
+                  AND u.updated_at >= DATE_SUB(NOW(), INTERVAL 100 DAY)
              LEFT JOIN users o ON o.id = ts.opponent_id
              INNER JOIN (
                  SELECT user_id, MAX(score) as max_score
@@ -271,6 +277,7 @@ async function dbGetTopStars(gameVariant, limit) {
              WHERE stars > 0
                AND last_game_variant = ?
                AND (isbanned & 9) = 0
+               AND updated_at >= DATE_SUB(NOW(), INTERVAL 100 DAY)
              ORDER BY stars DESC, gameswon DESC
              LIMIT ?`,
             [gameVariant, Number(limit)]

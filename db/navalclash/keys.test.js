@@ -30,11 +30,20 @@ describe("DeviceKeyCache", () => {
 
     it("should store and retrieve a key", () => {
         const key = Buffer.from("test-key")
-        cache.set("token1", key, "device-uuid-1")
+        cache.set("token1", key, "device-uuid-1", "android")
 
         const result = cache.get("token1")
         expect(result.key).toEqual(key)
         expect(result.deviceUuid).toBe("device-uuid-1")
+        expect(result.platform).toBe("android")
+    })
+
+    it("should default platform to null", () => {
+        const key = Buffer.from("test-key")
+        cache.set("token1", key, "device-uuid-1")
+
+        const result = cache.get("token1")
+        expect(result.platform).toBeNull()
     })
 
     it("should evict LRU entry when at capacity", () => {
@@ -100,12 +109,22 @@ describe("dbGetDeviceKey", () => {
     it("should return key from database", async () => {
         const mockKey = Buffer.from("a".repeat(32))
         mockExecute.mockResolvedValue([
-            [{ device_key: mockKey, device_uuid: "test-uuid" }],
+            [
+                {
+                    device_key: mockKey,
+                    device_uuid: "test-uuid",
+                    platform: "android",
+                },
+            ],
         ])
 
         const result = await dbGetDeviceKey("token-base64")
 
-        expect(result).toEqual({ key: mockKey, deviceUuid: "test-uuid" })
+        expect(result).toEqual({
+            key: mockKey,
+            deviceUuid: "test-uuid",
+            platform: "android",
+        })
         expect(mockExecute).toHaveBeenCalledWith(
             expect.stringContaining("SELECT device_key"),
             ["token-base64"]
@@ -129,7 +148,13 @@ describe("dbGetDeviceKey", () => {
     it("should use cache on second access", async () => {
         const mockKey = Buffer.from("b".repeat(32))
         mockExecute.mockResolvedValue([
-            [{ device_key: mockKey, device_uuid: "cached-uuid" }],
+            [
+                {
+                    device_key: mockKey,
+                    device_uuid: "cached-uuid",
+                    platform: "ios",
+                },
+            ],
         ])
 
         // First call hits DB
@@ -139,7 +164,11 @@ describe("dbGetDeviceKey", () => {
         // Second call should use cache
         mockExecute.mockReset()
         const result = await dbGetDeviceKey("cached-token")
-        expect(result).toEqual({ key: mockKey, deviceUuid: "cached-uuid" })
+        expect(result).toEqual({
+            key: mockKey,
+            deviceUuid: "cached-uuid",
+            platform: "ios",
+        })
         expect(mockExecute).not.toHaveBeenCalled()
     })
 })
@@ -149,7 +178,26 @@ describe("dbStoreDeviceKey", () => {
         mockExecute.mockReset()
     })
 
-    it("should store key in database", async () => {
+    it("should store key in database with platform", async () => {
+        mockExecute.mockResolvedValue([{ affectedRows: 1 }])
+
+        const key = Buffer.from("c".repeat(32))
+        const result = await dbStoreDeviceKey(
+            "token-b64",
+            key,
+            "uuid",
+            3600,
+            "android"
+        )
+
+        expect(result).toBe(true)
+        expect(mockExecute).toHaveBeenCalledWith(
+            expect.stringContaining("INSERT INTO device_keys"),
+            ["token-b64", key, "uuid", "android", 3600]
+        )
+    })
+
+    it("should store key with null platform by default", async () => {
         mockExecute.mockResolvedValue([{ affectedRows: 1 }])
 
         const key = Buffer.from("c".repeat(32))
@@ -158,7 +206,7 @@ describe("dbStoreDeviceKey", () => {
         expect(result).toBe(true)
         expect(mockExecute).toHaveBeenCalledWith(
             expect.stringContaining("INSERT INTO device_keys"),
-            ["token-b64", key, "uuid", 3600]
+            ["token-b64", key, "uuid", null, 3600]
         )
     })
 

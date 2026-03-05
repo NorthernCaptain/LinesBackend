@@ -10,6 +10,7 @@ const {
     aesGcmEncrypt,
     generateDeviceToken,
     tokenToBase64,
+    getPlatformForKeyIndex,
 } = require("../../utils/encryption")
 const { dbStoreDeviceKey } = require("../../db/navalclash/keys")
 const { logger } = require("../../utils/logger")
@@ -73,6 +74,9 @@ async function handshake(req, res) {
         return res.status(400).json(PROTOCOL_ERROR)
     }
 
+    // Derive platform from key index
+    const platform = getPlatformForKeyIndex(keyIndex)
+
     // Generate device token
     const tokenBinary = generateDeviceToken(TOKEN_TTL_SECONDS)
     const tokenBase64 = tokenToBase64(tokenBinary)
@@ -82,7 +86,8 @@ async function handshake(req, res) {
         tokenBase64,
         deviceKey,
         uuid,
-        TOKEN_TTL_SECONDS
+        TOKEN_TTL_SECONDS,
+        platform
     )
     if (!stored) {
         logger.error({ did: uuid }, "Handshake: failed to store device key")
@@ -92,6 +97,7 @@ async function handshake(req, res) {
     logger.info(
         { did: uuid },
         "Handshake: success, ki=" + keyIndex,
+        "platform=" + platform,
         "v=" + v,
         "p=" + p
     )

@@ -246,6 +246,19 @@ function tokenFromBase64(base64Token) {
     return Buffer.from(base64Token, "base64")
 }
 
+/**
+ * Determines the client platform from the RSA key index used during handshake.
+ * Keys 0-3 are assigned to Android, keys 4-7 to iOS.
+ *
+ * @param {number} keyIndex - RSA key index from handshake
+ * @returns {string} "android", "ios", or "unknown"
+ */
+function getPlatformForKeyIndex(keyIndex) {
+    if (keyIndex >= 0 && keyIndex <= 3) return "android"
+    if (keyIndex >= 4 && keyIndex <= 7) return "ios"
+    return "unknown"
+}
+
 module.exports = {
     HANDSHAKE_SIGNATURE,
     HANDSHAKE_VERSION,
@@ -260,4 +273,5 @@ module.exports = {
     validateDeviceToken,
     tokenToBase64,
     tokenFromBase64,
+    getPlatformForKeyIndex,
 }

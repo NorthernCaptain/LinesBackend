@@ -12,6 +12,7 @@ const mockRsaDecrypt = jest.fn()
 const mockAesGcmEncrypt = jest.fn()
 const mockGenerateDeviceToken = jest.fn()
 const mockTokenToBase64 = jest.fn()
+const mockGetPlatformForKeyIndex = jest.fn()
 
 jest.mock("../../utils/encryption", () => ({
     parseHandshakeRequest: mockParseHandshakeRequest,
@@ -19,6 +20,7 @@ jest.mock("../../utils/encryption", () => ({
     aesGcmEncrypt: mockAesGcmEncrypt,
     generateDeviceToken: mockGenerateDeviceToken,
     tokenToBase64: mockTokenToBase64,
+    getPlatformForKeyIndex: mockGetPlatformForKeyIndex,
 }))
 
 // Mock DB
@@ -136,6 +138,42 @@ describe("handshakeService", () => {
         expect(res.json).toHaveBeenCalledWith({ error: "PROTOCOL_ERROR" })
     })
 
+    it("should derive ios platform for key index 5", async () => {
+        const aesKey = crypto.randomBytes(32)
+        const payload = JSON.stringify({
+            key: aesKey.toString("base64"),
+            uuid: "ios-device",
+            v: 26,
+            p: "ios",
+        })
+        const token = crypto.randomBytes(32)
+
+        mockParseHandshakeRequest.mockReturnValue({
+            keyIndex: 5,
+            encrypted: Buffer.alloc(256),
+        })
+        mockRsaDecrypt.mockReturnValue(Buffer.from(payload))
+        mockGetPlatformForKeyIndex.mockReturnValue("ios")
+        mockGenerateDeviceToken.mockReturnValue(token)
+        mockTokenToBase64.mockReturnValue("ios-token-b64")
+        mockDbStoreDeviceKey.mockResolvedValue(true)
+        mockAesGcmEncrypt.mockReturnValue({
+            iv: crypto.randomBytes(12),
+            ciphertext: Buffer.from("encrypted"),
+        })
+
+        await handshake(req, res)
+
+        expect(mockGetPlatformForKeyIndex).toHaveBeenCalledWith(5)
+        expect(mockDbStoreDeviceKey).toHaveBeenCalledWith(
+            "ios-token-b64",
+            aesKey,
+            "ios-device",
+            4 * 60 * 60,
+            "ios"
+        )
+    })
+
     it("should return 500 when DB store fails", async () => {
         const aesKey = crypto.randomBytes(32)
         const payload = JSON.stringify({
@@ -152,6 +190,7 @@ describe("handshakeService", () => {
             encrypted: Buffer.alloc(256),
         })
         mockRsaDecrypt.mockReturnValue(Buffer.from(payload))
+        mockGetPlatformForKeyIndex.mockReturnValue("android")
         mockGenerateDeviceToken.mockReturnValue(token)
         mockTokenToBase64.mockReturnValue("dG9rZW4tYmFzZTY0")
         mockDbStoreDeviceKey.mockResolvedValue(false)
@@ -162,7 +201,7 @@ describe("handshakeService", () => {
         expect(res.json).toHaveBeenCalledWith({ error: "PROTOCOL_ERROR" })
     })
 
-    it("should succeed with valid handshake", async () => {
+    it("should succeed with valid handshake and derive platform", async () => {
         const aesKey = crypto.randomBytes(32)
         const payload = JSON.stringify({
             key: aesKey.toString("base64"),
@@ -181,6 +220,7 @@ describe("handshakeService", () => {
             encrypted: Buffer.alloc(256),
         })
         mockRsaDecrypt.mockReturnValue(Buffer.from(payload))
+        mockGetPlatformForKeyIndex.mockReturnValue("android")
         mockGenerateDeviceToken.mockReturnValue(token)
         mockTokenToBase64.mockReturnValue(tokenB64)
         mockDbStoreDeviceKey.mockResolvedValue(true)
@@ -191,12 +231,16 @@ describe("handshakeService", () => {
 
         await handshake(req, res)
 
-        // Verify DB store was called correctly
+        // Verify platform was derived from key index
+        expect(mockGetPlatformForKeyIndex).toHaveBeenCalledWith(2)
+
+        // Verify DB store was called with platform
         expect(mockDbStoreDeviceKey).toHaveBeenCalledWith(
             tokenB64,
             aesKey,
             "test-device-uuid",
-            4 * 60 * 60
+            4 * 60 * 60,
+            "android"
         )
 
         // Verify AES encrypt was called with correct response

@@ -98,6 +98,7 @@ async function navalEncryption(req, res, next) {
         req.body = JSON.parse(plaintext.toString("utf8"))
         req.navalDeviceUuid = keyRecord.deviceUuid
         req.navalKey = keyRecord.key
+        req.navalPlatform = keyRecord.platform || "unknown"
     } catch (error) {
         logger.error({}, "Encryption: decrypt error:", error.message)
         return res.status(400).json(PROTOCOL_ERROR)

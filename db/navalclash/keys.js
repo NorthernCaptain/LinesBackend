@@ -25,7 +25,7 @@ class DeviceKeyCache {
      * Gets a key from cache, promoting to most-recently-used.
      *
      * @param {string} tokenBase64 - Device token
-     * @returns {{ key: Buffer, deviceUuid: string } | null}
+     * @returns {{ key: Buffer, deviceUuid: string, platform: string|null } | null}
      */
     get(tokenBase64) {
         if (!this.cache.has(tokenBase64)) {
@@ -43,8 +43,9 @@ class DeviceKeyCache {
      * @param {string} tokenBase64 - Device token
      * @param {Buffer} key - AES key
      * @param {string} deviceUuid - Device UUID
+     * @param {string|null} [platform=null] - Client platform ("android", "ios", or null)
      */
-    set(tokenBase64, key, deviceUuid) {
+    set(tokenBase64, key, deviceUuid, platform = null) {
         if (this.cache.has(tokenBase64)) {
             this.cache.delete(tokenBase64)
         }
@@ -52,7 +53,7 @@ class DeviceKeyCache {
             const lruKey = this.cache.keys().next().value
             this.cache.delete(lruKey)
         }
-        this.cache.set(tokenBase64, { key, deviceUuid })
+        this.cache.set(tokenBase64, { key, deviceUuid, platform })
     }
 
     /**
@@ -88,7 +89,7 @@ const deviceKeyCache = new DeviceKeyCache()
  * Gets device key, checking LRU cache first.
  *
  * @param {string} tokenBase64 - Base64-encoded device token
- * @returns {Promise<{ key: Buffer, deviceUuid: string } | null>}
+ * @returns {Promise<{ key: Buffer, deviceUuid: string, platform: string|null } | null>}
  */
 async function dbGetDeviceKey(tokenBase64) {
     const cached = deviceKeyCache.get(tokenBase64)
@@ -98,7 +99,7 @@ async function dbGetDeviceKey(tokenBase64) {
 
     try {
         const [rows] = await pool.execute(
-            `SELECT device_key, device_uuid FROM device_keys
+            `SELECT device_key, device_uuid, platform FROM device_keys
              WHERE device_token = ? AND expires_at > NOW()`,
             [tokenBase64]
         )
@@ -110,9 +111,15 @@ async function dbGetDeviceKey(tokenBase64) {
         const result = {
             key: rows[0].device_key,
             deviceUuid: rows[0].device_uuid,
+            platform: rows[0].platform || null,
         }
 
-        deviceKeyCache.set(tokenBase64, result.key, result.deviceUuid)
+        deviceKeyCache.set(
+            tokenBase64,
+            result.key,
+            result.deviceUuid,
+            result.platform
+        )
         return result
     } catch (error) {
         console.error("dbGetDeviceKey error:", error)
@@ -127,21 +134,29 @@ async function dbGetDeviceKey(tokenBase64) {
  * @param {Buffer} key - 32-byte AES key
  * @param {string} deviceUuid - Device UUID
  * @param {number} ttlSeconds - Time to live in seconds
+ * @param {string|null} [platform=null] - Client platform ("android", "ios", or null)
  * @returns {Promise<boolean>} True if stored successfully
  */
-async function dbStoreDeviceKey(tokenBase64, key, deviceUuid, ttlSeconds) {
+async function dbStoreDeviceKey(
+    tokenBase64,
+    key,
+    deviceUuid,
+    ttlSeconds,
+    platform = null
+) {
     try {
         await pool.execute(
             `INSERT INTO device_keys
-                (device_token, device_key, device_uuid, expires_at)
-             VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL ? SECOND))
+                (device_token, device_key, device_uuid, platform, expires_at)
+             VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? SECOND))
              ON DUPLICATE KEY UPDATE
                 device_key = VALUES(device_key),
+                platform = VALUES(platform),
                 expires_at = VALUES(expires_at)`,
-            [tokenBase64, key, deviceUuid, ttlSeconds]
+            [tokenBase64, key, deviceUuid, platform, ttlSeconds]
         )
 
-        deviceKeyCache.set(tokenBase64, key, deviceUuid)
+        deviceKeyCache.set(tokenBase64, key, deviceUuid, platform)
         return true
     } catch (error) {
         console.error("dbStoreDeviceKey error:", error)

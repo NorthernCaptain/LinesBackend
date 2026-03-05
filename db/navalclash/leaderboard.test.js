@@ -98,6 +98,19 @@ describe("db/navalclash/leaderboard", () => {
                 expect.anything()
             )
         })
+
+        it("should filter out users not seen in the last 100 days", async () => {
+            mockQuery
+                .mockResolvedValueOnce([[]]) // Android query
+                .mockResolvedValueOnce([[]]) // Human query
+
+            await dbGetTopScores(1, 50)
+
+            expect(mockQuery).toHaveBeenCalledWith(
+                expect.stringContaining("INTERVAL 100 DAY"),
+                expect.anything()
+            )
+        })
     })
 
     describe("dbGetTopScoresByType", () => {
@@ -117,7 +130,7 @@ describe("db/navalclash/leaderboard", () => {
         })
     })
 
-    describe("dbGetTopScoresByType - bitmask filter", () => {
+    describe("dbGetTopScoresByType - filters", () => {
         it("should use bitmask filter to exclude game and scores bans", async () => {
             mockQuery.mockResolvedValue([[]])
 
@@ -125,6 +138,17 @@ describe("db/navalclash/leaderboard", () => {
 
             expect(mockQuery).toHaveBeenCalledWith(
                 expect.stringContaining("(u.isbanned & 9) = 0"),
+                expect.anything()
+            )
+        })
+
+        it("should filter out users not seen in the last 100 days", async () => {
+            mockQuery.mockResolvedValue([[]])
+
+            await dbGetTopScoresByType(1, 3, 10)
+
+            expect(mockQuery).toHaveBeenCalledWith(
+                expect.stringContaining("INTERVAL 100 DAY"),
                 expect.anything()
             )
         })
@@ -326,6 +350,17 @@ describe("db/navalclash/leaderboard", () => {
 
             expect(mockQuery).toHaveBeenCalledWith(
                 expect.stringContaining("(isbanned & 9) = 0"),
+                [1, 50]
+            )
+        })
+
+        it("should filter out users not seen in the last 100 days", async () => {
+            mockQuery.mockResolvedValue([[]])
+
+            await dbGetTopStars(1, 50)
+
+            expect(mockQuery).toHaveBeenCalledWith(
+                expect.stringContaining("INTERVAL 100 DAY"),
                 [1, 50]
             )
         })

@@ -20,12 +20,12 @@ const { LICENSE } = require("./constants")
 // Mock db module
 jest.mock("../../db/navalclash", () => ({
     dbGetLicenseNonce: jest.fn(),
-    dbUpdateDeviceLicense: jest.fn(),
+    dbUpdateDeviceLicenseBits: jest.fn(),
 }))
 
 const {
     dbGetLicenseNonce,
-    dbUpdateDeviceLicense,
+    dbUpdateDeviceLicenseBits,
 } = require("../../db/navalclash")
 
 // Generate a test RSA key pair for signature verification tests
@@ -93,24 +93,24 @@ describe("licenseService", () => {
     })
 
     describe("mapResponseCode", () => {
-        it("should map 0x0 to LICENSED", () => {
-            expect(mapResponseCode(0x0)).toBe(LICENSE.LICENSED)
+        it("should map 0x0 to LVL_LICENSED", () => {
+            expect(mapResponseCode(0x0)).toBe(LICENSE.LVL_LICENSED)
         })
 
-        it("should map 0x1 to LICENSED", () => {
-            expect(mapResponseCode(0x1)).toBe(LICENSE.LICENSED)
+        it("should map 0x1 to LVL_LICENSED", () => {
+            expect(mapResponseCode(0x1)).toBe(LICENSE.LVL_LICENSED)
         })
 
-        it("should map 0x2 to NOT_LICENSED", () => {
-            expect(mapResponseCode(0x2)).toBe(LICENSE.NOT_LICENSED)
+        it("should map 0x2 to LVL_NOT_LICENSED", () => {
+            expect(mapResponseCode(0x2)).toBe(LICENSE.LVL_NOT_LICENSED)
         })
 
-        it("should map 0x3 to RETRY", () => {
-            expect(mapResponseCode(0x3)).toBe(LICENSE.RETRY)
+        it("should map 0x3 to LVL_RETRY", () => {
+            expect(mapResponseCode(0x3)).toBe(LICENSE.LVL_RETRY)
         })
 
-        it("should map unknown codes to NOT_LICENSED", () => {
-            expect(mapResponseCode(99)).toBe(LICENSE.NOT_LICENSED)
+        it("should map unknown codes to LVL_NOT_LICENSED", () => {
+            expect(mapResponseCode(99)).toBe(LICENSE.LVL_NOT_LICENSED)
         })
     })
 
@@ -202,7 +202,7 @@ describe("licenseService", () => {
 
         it("should reject invalid signature", async () => {
             process.env.GOOGLE_LICENSE_PUBLIC_KEY = testPublicKeyBase64
-            dbUpdateDeviceLicense.mockResolvedValue(true)
+            dbUpdateDeviceLicenseBits.mockResolvedValue(true)
 
             const { req, res } = mockReqRes({
                 did: "abc",
@@ -211,9 +211,10 @@ describe("licenseService", () => {
                 rc: 0,
             })
             await verifyLicense(req, res)
-            expect(dbUpdateDeviceLicense).toHaveBeenCalledWith(
+            expect(dbUpdateDeviceLicenseBits).toHaveBeenCalledWith(
                 "abc",
-                LICENSE.NOT_LICENSED
+                LICENSE.LVL_MASK,
+                LICENSE.LVL_NOT_LICENSED
             )
             expect(res.json).toHaveBeenCalledWith({ type: "lvlack" })
         })
@@ -223,13 +224,14 @@ describe("licenseService", () => {
             const rd = `0|999|${EXPECTED_PACKAGE}|205|uid|${recentTs()}`
             const sig = signData(rd)
             dbGetLicenseNonce.mockResolvedValue("123")
-            dbUpdateDeviceLicense.mockResolvedValue(true)
+            dbUpdateDeviceLicenseBits.mockResolvedValue(true)
 
             const { req, res } = mockReqRes({ did: "abc", rd, sig, rc: 0 })
             await verifyLicense(req, res)
-            expect(dbUpdateDeviceLicense).toHaveBeenCalledWith(
+            expect(dbUpdateDeviceLicenseBits).toHaveBeenCalledWith(
                 "abc",
-                LICENSE.NOT_LICENSED
+                LICENSE.LVL_MASK,
+                LICENSE.LVL_NOT_LICENSED
             )
         })
 
@@ -238,13 +240,14 @@ describe("licenseService", () => {
             const rd = `0|123|wrong.package|205|uid|${recentTs()}`
             const sig = signData(rd)
             dbGetLicenseNonce.mockResolvedValue("123")
-            dbUpdateDeviceLicense.mockResolvedValue(true)
+            dbUpdateDeviceLicenseBits.mockResolvedValue(true)
 
             const { req, res } = mockReqRes({ did: "abc", rd, sig, rc: 0 })
             await verifyLicense(req, res)
-            expect(dbUpdateDeviceLicense).toHaveBeenCalledWith(
+            expect(dbUpdateDeviceLicenseBits).toHaveBeenCalledWith(
                 "abc",
-                LICENSE.NOT_LICENSED
+                LICENSE.LVL_MASK,
+                LICENSE.LVL_NOT_LICENSED
             )
         })
 
@@ -254,13 +257,14 @@ describe("licenseService", () => {
             const rd = `0|12345|${EXPECTED_PACKAGE}|205|uid|${staleTs}`
             const sig = signData(rd)
             dbGetLicenseNonce.mockResolvedValue("12345")
-            dbUpdateDeviceLicense.mockResolvedValue(true)
+            dbUpdateDeviceLicenseBits.mockResolvedValue(true)
 
             const { req, res } = mockReqRes({ did: "abc", rd, sig, rc: 0 })
             await verifyLicense(req, res)
-            expect(dbUpdateDeviceLicense).toHaveBeenCalledWith(
+            expect(dbUpdateDeviceLicenseBits).toHaveBeenCalledWith(
                 "abc",
-                LICENSE.NOT_LICENSED
+                LICENSE.LVL_MASK,
+                LICENSE.LVL_NOT_LICENSED
             )
         })
 
@@ -269,13 +273,14 @@ describe("licenseService", () => {
             const rd = `0|12345|${EXPECTED_PACKAGE}|205|uid|${recentTs()}`
             const sig = signData(rd)
             dbGetLicenseNonce.mockResolvedValue("12345")
-            dbUpdateDeviceLicense.mockResolvedValue(true)
+            dbUpdateDeviceLicenseBits.mockResolvedValue(true)
 
             const { req, res } = mockReqRes({ did: "abc", rd, sig, rc: 0 })
             await verifyLicense(req, res)
-            expect(dbUpdateDeviceLicense).toHaveBeenCalledWith(
+            expect(dbUpdateDeviceLicenseBits).toHaveBeenCalledWith(
                 "abc",
-                LICENSE.LICENSED
+                LICENSE.LVL_MASK,
+                LICENSE.LVL_LICENSED
             )
             expect(res.json).toHaveBeenCalledWith({ type: "lvlack" })
         })
@@ -285,13 +290,14 @@ describe("licenseService", () => {
             const rd = `2|12345|${EXPECTED_PACKAGE}|205|uid|${recentTs()}`
             const sig = signData(rd)
             dbGetLicenseNonce.mockResolvedValue("12345")
-            dbUpdateDeviceLicense.mockResolvedValue(true)
+            dbUpdateDeviceLicenseBits.mockResolvedValue(true)
 
             const { req, res } = mockReqRes({ did: "abc", rd, sig, rc: 2 })
             await verifyLicense(req, res)
-            expect(dbUpdateDeviceLicense).toHaveBeenCalledWith(
+            expect(dbUpdateDeviceLicenseBits).toHaveBeenCalledWith(
                 "abc",
-                LICENSE.NOT_LICENSED
+                LICENSE.LVL_MASK,
+                LICENSE.LVL_NOT_LICENSED
             )
         })
 
@@ -300,13 +306,14 @@ describe("licenseService", () => {
             const rd = `3|12345|${EXPECTED_PACKAGE}|205|uid|${recentTs()}`
             const sig = signData(rd)
             dbGetLicenseNonce.mockResolvedValue("12345")
-            dbUpdateDeviceLicense.mockResolvedValue(true)
+            dbUpdateDeviceLicenseBits.mockResolvedValue(true)
 
             const { req, res } = mockReqRes({ did: "abc", rd, sig, rc: 3 })
             await verifyLicense(req, res)
-            expect(dbUpdateDeviceLicense).toHaveBeenCalledWith(
+            expect(dbUpdateDeviceLicenseBits).toHaveBeenCalledWith(
                 "abc",
-                LICENSE.RETRY
+                LICENSE.LVL_MASK,
+                LICENSE.LVL_RETRY
             )
         })
     })

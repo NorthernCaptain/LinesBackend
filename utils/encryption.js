@@ -102,7 +102,9 @@ function parseHandshakeRequest(body) {
 }
 
 /**
- * Decrypts RSA-OAEP encrypted data (from handshake).
+ * Decrypts RSA-encrypted data (from handshake).
+ * Tries OAEP (SHA-256) first for existing Android clients,
+ * falls back to PKCS1v1.5 for iOS/newer clients.
  *
  * @param {Buffer} encrypted - RSA ciphertext
  * @param {number} keyIndex - Index of the private key to use
@@ -114,14 +116,30 @@ function rsaDecrypt(encrypted, keyIndex = 0) {
         throw new Error(`Invalid key index: ${keyIndex}`)
     }
 
-    return crypto.privateDecrypt(
-        {
-            key: RSA_PRIVATE_KEYS[keyIndex],
-            padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-            oaepHash: "sha256",
-        },
-        encrypted
-    )
+    const key = RSA_PRIVATE_KEYS[keyIndex]
+
+    // Try PKCS1v1.5 first (current clients), validate JSON
+    try {
+        const result = crypto.privateDecrypt(
+            {
+                key,
+                padding: crypto.constants.RSA_PKCS1_PADDING,
+            },
+            encrypted
+        )
+        JSON.parse(result.toString("utf8"))
+        return result
+    } catch (_) {
+        // Fall back to OAEP SHA-256 (legacy Android clients)
+        return crypto.privateDecrypt(
+            {
+                key,
+                padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+                oaepHash: "sha256",
+            },
+            encrypted
+        )
+    }
 }
 
 /**

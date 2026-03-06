@@ -16,6 +16,7 @@ const {
     dbSaveLicenseNonce,
     dbGetLicenseNonce,
     dbUpdateDeviceLicense,
+    dbUpdateDeviceLicenseBits,
 } = require("./licenses")
 
 describe("licenses db functions", () => {
@@ -68,7 +69,7 @@ describe("licenses db functions", () => {
     })
 
     describe("dbUpdateDeviceLicense", () => {
-        it("should update license status and clear nonce", async () => {
+        it("should update license status", async () => {
             pool.execute.mockResolvedValue([{ affectedRows: 1 }])
             const result = await dbUpdateDeviceLicense("device123", 1)
             expect(result).toBe(true)
@@ -81,6 +82,24 @@ describe("licenses db functions", () => {
         it("should return false on error", async () => {
             pool.execute.mockRejectedValue(new Error("db error"))
             const result = await dbUpdateDeviceLicense("device123", 1)
+            expect(result).toBe(false)
+        })
+    })
+
+    describe("dbUpdateDeviceLicenseBits", () => {
+        it("should update license bits using bitmask", async () => {
+            pool.execute.mockResolvedValue([{ affectedRows: 1 }])
+            const result = await dbUpdateDeviceLicenseBits("device123", 0x07, 1)
+            expect(result).toBe(true)
+            expect(pool.execute).toHaveBeenCalledWith(
+                expect.stringContaining("COALESCE"),
+                [0x07, 1, "device123"]
+            )
+        })
+
+        it("should return false on error", async () => {
+            pool.execute.mockRejectedValue(new Error("db error"))
+            const result = await dbUpdateDeviceLicenseBits("device123", 0x07, 1)
             expect(result).toBe(false)
         })
     })

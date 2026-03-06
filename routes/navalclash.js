@@ -70,6 +70,7 @@ function router(app) {
         syncProfile,
     } = require("../services/navalclash/profileService")
     const { verifyLicense } = require("../services/navalclash/licenseService")
+    const { verifyIntegrity } = require("../services/navalclash/integrityService")
 
     // Phase 1: Connect & Users
     r.post("/connect", connect)
@@ -109,8 +110,9 @@ function router(app) {
     r.post("/iby", internalBuy)
     r.post("/inventory", getInventory)
 
-    // License Verification
+    // License & Integrity Verification
     r.post("/lvl", verifyLicense)
+    r.post("/int", verifyIntegrity)
 
     // Phase 6: Profile Management
     r.post("/uexp", exportProfile)

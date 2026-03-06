@@ -119,13 +119,27 @@ describe("utils/encryption", () => {
     })
 
     describe("rsaDecrypt", () => {
-        it("should decrypt RSA-OAEP encrypted data", () => {
+        it("should decrypt RSA-OAEP encrypted data (existing Android)", () => {
             const plaintext = Buffer.from('{"key":"test","uuid":"abc"}')
             const encrypted = crypto.publicEncrypt(
                 {
                     key: publicKey,
                     padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
                     oaepHash: "sha256",
+                },
+                plaintext
+            )
+
+            const result = rsaDecrypt(encrypted, 0)
+            expect(result.toString("utf8")).toBe(plaintext.toString("utf8"))
+        })
+
+        it("should decrypt RSA-PKCS1 encrypted data (iOS)", () => {
+            const plaintext = Buffer.from('{"key":"test","uuid":"abc"}')
+            const encrypted = crypto.publicEncrypt(
+                {
+                    key: publicKey,
+                    padding: crypto.constants.RSA_PKCS1_PADDING,
                 },
                 plaintext
             )
@@ -267,8 +281,7 @@ describe("utils/encryption", () => {
             const encrypted = crypto.publicEncrypt(
                 {
                     key: publicKey,
-                    padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-                    oaepHash: "sha256",
+                    padding: crypto.constants.RSA_PKCS1_PADDING,
                 },
                 Buffer.from(payload, "utf8")
             )

@@ -272,16 +272,20 @@ const TIMING = {
 }
 
 // =============================================================================
-// LICENSE STATUS CONSTANTS
-// Google Play license verification states stored in devices.license_status
+// LICENSE STATUS CONSTANTS (bitmask)
+// LVL and Play Integrity verdicts stored in devices.license_status
 // =============================================================================
 
 const LICENSE = {
-    NOT_SET: null, // Not yet checked
-    LICENSED: 1, // Valid license
-    NOT_LICENSED: 2, // No valid license
-    RETRY: 3, // Temporary error, retry later
-    NON_APPLICABLE: 4, // Not applicable (e.g., non-Play install)
+    LVL_LICENSED: 1, // bit 0 — LVL says licensed
+    LVL_NOT_LICENSED: 2, // bit 1 — LVL says not licensed
+    LVL_RETRY: 4, // bit 2 — LVL says retry
+    INT_DEVICE_OK: 8, // bit 3 — MEETS_DEVICE_INTEGRITY
+    INT_APP_RECOGNIZED: 16, // bit 4 — PLAY_RECOGNIZED
+    INT_LICENSED: 32, // bit 5 — Account says LICENSED
+    INT_CHECKED: 64, // bit 6 — Integrity check was performed
+    LVL_MASK: 0x07, // bits 0-2 (LVL verdict)
+    INT_MASK: 0x78, // bits 3-6 (Integrity verdict)
 }
 
 // =============================================================================

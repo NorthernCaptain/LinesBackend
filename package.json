@@ -12,6 +12,7 @@
         "body-parser": "^1.19.0",
         "crypto": "^1.0.1",
         "express": "^4.22.1",
+        "googleapis": "^144.0.0",
         "helmet": "^3.22.0",
         "moment": "^2.30.1",
         "mysql2": "^3.16.0",

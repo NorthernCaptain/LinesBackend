@@ -49,10 +49,36 @@ async function dbGetLicenseNonce(androidId) {
 }
 
 /**
- * Updates the license status for a device and clears the nonce.
+ * Updates specific license status bits for a device using a bitmask.
+ * Clears the bits indicated by mask, then sets the new bits.
  *
  * @param {string} androidId - Android device ID
- * @param {number|null} status - License status (1=licensed, 2=not_licensed, 3=retry, 4=non_applicable)
+ * @param {number} mask - Bitmask of bits to clear (e.g. LVL_MASK or INT_MASK)
+ * @param {number} bits - New bits to set within the cleared region
+ * @returns {Promise<boolean>} True if updated successfully
+ */
+async function dbUpdateDeviceLicenseBits(androidId, mask, bits) {
+    try {
+        await pool.execute(
+            `UPDATE devices
+             SET license_status = (COALESCE(license_status, 0) & ~?) | ?,
+                 license_checked_at = NOW()
+             WHERE android_id = ?`,
+            [mask, bits, androidId]
+        )
+        return true
+    } catch (error) {
+        console.error("dbUpdateDeviceLicenseBits error:", error)
+        return false
+    }
+}
+
+/**
+ * Updates the license status for a device (backward-compatible wrapper).
+ * Replaces the entire license_status value.
+ *
+ * @param {string} androidId - Android device ID
+ * @param {number|null} status - Full license status value
  * @returns {Promise<boolean>} True if updated successfully
  */
 async function dbUpdateDeviceLicense(androidId, status) {
@@ -60,7 +86,6 @@ async function dbUpdateDeviceLicense(androidId, status) {
         await pool.execute(
             `UPDATE devices
              SET license_status = ?,
-                 license_nonce = NULL,
                  license_checked_at = NOW()
              WHERE android_id = ?`,
             [status, androidId]
@@ -76,4 +101,5 @@ module.exports = {
     dbSaveLicenseNonce,
     dbGetLicenseNonce,
     dbUpdateDeviceLicense,
+    dbUpdateDeviceLicenseBits,
 }

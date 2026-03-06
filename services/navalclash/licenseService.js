@@ -7,7 +7,7 @@
 const crypto = require("crypto")
 const {
     dbGetLicenseNonce,
-    dbUpdateDeviceLicense,
+    dbUpdateDeviceLicenseBits,
 } = require("../../db/navalclash")
 const { logger } = require("../../utils/logger")
 const { LICENSE } = require("./constants")
@@ -107,13 +107,13 @@ function mapResponseCode(responseCode) {
     switch (responseCode) {
         case 0x0: // LICENSED
         case 0x1: // LICENSED_OLD_KEY
-            return LICENSE.LICENSED
+            return LICENSE.LVL_LICENSED
         case 0x2: // NOT_LICENSED
-            return LICENSE.NOT_LICENSED
+            return LICENSE.LVL_NOT_LICENSED
         case 0x3: // RETRY
-            return LICENSE.RETRY
+            return LICENSE.LVL_RETRY
         default:
-            return LICENSE.NOT_LICENSED
+            return LICENSE.LVL_NOT_LICENSED
     }
 }
 
@@ -158,7 +158,7 @@ async function verifyLicense(req, res) {
     // Verify RSA-SHA1 signature
     if (!verifySignature(rd, sig, publicKeyPem)) {
         logger.warn(ctx, "Invalid license signature")
-        await dbUpdateDeviceLicense(did, LICENSE.NOT_LICENSED)
+        await dbUpdateDeviceLicenseBits(did, LICENSE.LVL_MASK, LICENSE.LVL_NOT_LICENSED)
         return res.json({ type: "lvlack" })
     }
 
@@ -166,7 +166,7 @@ async function verifyLicense(req, res) {
     const parsed = parseResponseData(rd)
     if (!parsed) {
         logger.warn(ctx, "Failed to parse response data")
-        await dbUpdateDeviceLicense(did, LICENSE.NOT_LICENSED)
+        await dbUpdateDeviceLicenseBits(did, LICENSE.LVL_MASK, LICENSE.LVL_NOT_LICENSED)
         return res.json({ type: "lvlack" })
     }
 
@@ -177,7 +177,7 @@ async function verifyLicense(req, res) {
             { ...ctx, stored: storedNonce, received: parsed.nonce },
             "Nonce mismatch"
         )
-        await dbUpdateDeviceLicense(did, LICENSE.NOT_LICENSED)
+        await dbUpdateDeviceLicenseBits(did, LICENSE.LVL_MASK, LICENSE.LVL_NOT_LICENSED)
         return res.json({ type: "lvlack" })
     }
 
@@ -187,7 +187,7 @@ async function verifyLicense(req, res) {
             { ...ctx, pkg: parsed.packageName },
             "Package name mismatch"
         )
-        await dbUpdateDeviceLicense(did, LICENSE.NOT_LICENSED)
+        await dbUpdateDeviceLicenseBits(did, LICENSE.LVL_MASK, LICENSE.LVL_NOT_LICENSED)
         return res.json({ type: "lvlack" })
     }
 
@@ -197,15 +197,15 @@ async function verifyLicense(req, res) {
             { ...ctx, ts: parsed.timestamp },
             "License response timestamp too old"
         )
-        await dbUpdateDeviceLicense(did, LICENSE.NOT_LICENSED)
+        await dbUpdateDeviceLicenseBits(did, LICENSE.LVL_MASK, LICENSE.LVL_NOT_LICENSED)
         return res.json({ type: "lvlack" })
     }
 
-    // Map response code to license status
-    const status = mapResponseCode(parsed.responseCode)
-    await dbUpdateDeviceLicense(did, status)
+    // Map response code to license status (bitmask)
+    const bits = mapResponseCode(parsed.responseCode)
+    await dbUpdateDeviceLicenseBits(did, LICENSE.LVL_MASK, bits)
 
-    logger.info({ ...ctx, status }, "License verification complete")
+    logger.info({ ...ctx, bits }, "License verification complete")
     return res.json({ type: "lvlack" })
 }
 

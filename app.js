@@ -69,7 +69,10 @@ if (cluster.isMaster) {
         accessTokenLifetime: 3600 * 12,
     })
 
+    const { requestLogger } = require("./utils/logger")
+
     app.use(helmet())
+    app.use(requestLogger)
     // Redirect HTTP to HTTPS (only when certs are available)
     if (hasCerts) {
         app.use(function (req, res, next) {

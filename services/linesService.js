@@ -1,4 +1,4 @@
-const { v4: uuid } = require("uuid")
+const crypto = require("crypto")
 const { validate } = require("../utils/validate.js")
 const { respond } = require("../utils/respond.js")
 
@@ -19,7 +19,7 @@ const newSession = async (req, res) => {
     validate(body, "session_new_req")
 
     let session = {
-        uuid: uuid(),
+        uuid: crypto.randomUUID(),
         ip: req.connection.remoteAddress,
         version: body.version,
     }

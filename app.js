@@ -4,6 +4,8 @@ const os = require("os")
 const numWorkers = parseInt(process.env.CLUSTER_WORKERS, 10) || os.cpus().length
 
 if (cluster.isMaster) {
+    const { loadModules } = require("./utils/moduleLoader")
+
     let nextWorkerId = 1
 
     console.log(
@@ -19,6 +21,12 @@ if (cluster.isMaster) {
 
     for (let i = 0; i < numWorkers; i++) {
         forkWorker()
+    }
+
+    // Initialize master-process hooks for dynamic modules
+    const modules = loadModules()
+    for (const mod of modules) {
+        if (mod.setupMaster) mod.setupMaster()
     }
 
     cluster.on("exit", (worker, code, signal) => {
@@ -48,6 +56,10 @@ if (cluster.isMaster) {
     const linesRouterFunc = require("./routes/lines").router
     const oldsRouterFunc = require("./routes/olds").router
     const authRouterFunc = require("./routes/auth").router
+    const { loadModules } = require("./utils/moduleLoader")
+
+    const certPath = "etc/letsencrypt/live/lines.navalclash.com"
+    const hasCerts = fs.existsSync(`${certPath}/privkey.pem`)
 
     const app = express()
     app.oauth = oAuth2Server({
@@ -58,15 +70,17 @@ if (cluster.isMaster) {
     })
 
     app.use(helmet())
-    //redirect all http traffic to https
-    app.use(function (req, res, next) {
-        if (!req.secure) {
-            return res.redirect(
-                ["https://", req.get("Host"), req.baseUrl].join("")
-            )
-        }
-        next()
-    })
+    // Redirect HTTP to HTTPS (only when certs are available)
+    if (hasCerts) {
+        app.use(function (req, res, next) {
+            if (!req.secure) {
+                return res.redirect(
+                    ["https://", req.get("Host"), req.baseUrl].join("")
+                )
+            }
+            next()
+        })
+    }
 
     app.use(bodyParser.urlencoded({ extended: true }))
     app.use(bodyParser.json())
@@ -96,33 +110,39 @@ if (cluster.isMaster) {
     app.use("/", linesRouterFunc(app))
     app.use("/auth", authRouterFunc(app))
 
+    // Mount dynamic modules
+    const modules = loadModules()
+    for (const mod of modules) {
+        app.use(mod.mountPath, mod.createRouter(app))
+    }
+
     app.post("/update/on/push", wrap(githubPushEvent))
 
     app.use(expressErrorHandler)
 
     initValidators()
 
-    const privateKey = fs.readFileSync(
-        "etc/letsencrypt/live/lines.navalclash.com/privkey.pem",
-        "utf8"
-    )
-    const certificate = fs.readFileSync(
-        "etc/letsencrypt/live/lines.navalclash.com/fullchain.pem",
-        "utf8"
-    )
-    const credentials = { key: privateKey, cert: certificate }
-
-    const httpsServer = https.createServer(credentials, app)
-    httpsServer.listen(8443, "0.0.0.0", (err) => {
-        if (err) {
-            console.error("ERROR: ", err)
-        }
+    const httpPort = process.env.HTTP_PORT || 10080
+    const httpServer = app.listen(httpPort, "0.0.0.0", () => {
         console.log(
-            `Server 1.5.0 worker ${workerId} started, UID is now ${process.getuid ? process.getuid() : ""}`
+            `Server 1.5.0 worker ${workerId} HTTP on :${httpPort}, UID is now ${process.getuid ? process.getuid() : ""}`
         )
     })
 
-    const httpServer = app.listen(10080, "0.0.0.0")
+    let httpsServer = null
+    if (hasCerts) {
+        const credentials = {
+            key: fs.readFileSync(`${certPath}/privkey.pem`, "utf8"),
+            cert: fs.readFileSync(`${certPath}/fullchain.pem`, "utf8"),
+        }
+        const httpsPort = process.env.HTTPS_PORT || 8443
+        httpsServer = https.createServer(credentials, app)
+        httpsServer.listen(httpsPort, "0.0.0.0", () => {
+            console.log(`Server 1.5.0 worker ${workerId} HTTPS on :${httpsPort}`)
+        })
+    } else {
+        console.log("No SSL certs found, running HTTP only")
+    }
 
-    setServers([httpServer, httpsServer])
+    setServers(httpsServer ? [httpServer, httpsServer] : [httpServer])
 }

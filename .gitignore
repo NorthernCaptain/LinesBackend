@@ -1,4 +1,8 @@
 /tmp/*
 /.idea/*
+/.vscode/*
 /etc/*
+/keys/*
+package-lock.json
 /node_modules/*
+.env.development

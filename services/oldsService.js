@@ -2,6 +2,7 @@ const { ServerError, ClientError } = require("../errors")
 const { validate } = require("../utils/validate.js")
 const { respond } = require("../utils/respond.js")
 const { dbRunSQL, tableColumns, getTables } = require("../db/oldsdb")
+const { hashToken } = require("../db/auth")
 
 const resp_schema = "response"
 const req_schema = "get_req"
@@ -382,7 +383,7 @@ const who = async (req) => {
     if (!token || typeof token[0] === "undefined") {
         return {}
     }
-    const sql = `SELECT id, name, email, role, description FROM oldsdb.whois WHERE token = '${token[0]}';`
+    const sql = `SELECT id, name, email, role, description FROM oldsdb.whois WHERE token = '${hashToken(token[0])}';`
     const user = await dbRunSQL(sql)
     return user[0]
 }

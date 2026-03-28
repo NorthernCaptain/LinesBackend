@@ -48,7 +48,8 @@ LinesBackend/
 │   └── oldsdb/                 # OLDS schemas
 │
 ├── sql/
-│   └── oldsdb.v2.sql           # Database initialization script
+│   ├── oldsdb.v2.sql           # Database initialization script
+│   └── authdb_refresh_tokens.sql # Refresh tokens table migration
 │
 ├── auth/
 │   └── authenticator.js        # OAuth middleware
@@ -142,22 +143,64 @@ Response:
 
 ### 2. Authentication API
 
-OAuth 2.0 token-based authentication with user registration.
+OAuth 2.0 token-based authentication with user registration, refresh token rotation, and rate limiting.
 
 #### Endpoints
 
-| Endpoint         | Method | Auth     | Description                       |
-| ---------------- | ------ | -------- | --------------------------------- |
-| `/auth/register` | POST   | Required | Register new user                 |
-| `/auth/login`    | POST   | -        | Obtain access token (OAuth grant) |
+| Endpoint         | Method | Auth     | Rate Limit | Description                              |
+| ---------------- | ------ | -------- | ---------- | ---------------------------------------- |
+| `/auth/register` | POST   | Required | 3/min      | Register new user                        |
+| `/auth/login`    | POST   | -        | 5/min      | Obtain access + refresh tokens           |
+| `/auth/logout`   | POST   | Required | -          | Revoke current access token              |
 
 #### Features
 
 - User registration with email/password
-- SHA256 password hashing
-- OAuth 2.0 password grant flow
-- Access tokens with 12-hour lifetime
+- bcrypt password hashing (cost factor 12)
+- Gradual migration of legacy SHA256 hashes to bcrypt on login
+- OAuth 2.0 password grant and refresh token grant
+- Short-lived access tokens (15 minutes)
+- Long-lived refresh tokens (7 days) with rotation
+- Access tokens hashed (SHA256) before storage
+- Refresh tokens hashed (SHA256) before storage
+- Rate limiting on login and register endpoints
 - Client credential validation
+
+#### Authentication Flow
+
+1. **Login**: Client sends credentials, receives access token (15 min) + refresh token (7 days)
+2. **API calls**: Client includes `Authorization: Bearer <access_token>` header
+3. **Refresh**: Before access token expires, client requests a new pair using the refresh token
+4. **Logout**: Client revokes the access token
+
+#### Example: Login
+
+```bash
+curl -X POST http://localhost:10080/auth/login \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=password&username=user@example.com&password=secret&client_id=APP&client_secret=SECRET"
+```
+
+Response:
+
+```json
+{
+  "token_type": "bearer",
+  "access_token": "abc123...",
+  "expires_in": 900,
+  "refresh_token": "def456..."
+}
+```
+
+#### Example: Refresh Token
+
+```bash
+curl -X POST http://localhost:10080/auth/login \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=refresh_token&refresh_token=def456...&client_id=APP&client_secret=SECRET"
+```
+
+Returns new access + refresh tokens. The old refresh token is revoked (rotation).
 
 #### Example: User Registration
 
@@ -173,11 +216,25 @@ Content-Type: application/json
 }
 ```
 
+#### Example: Logout
+
+```bash
+curl -X POST http://localhost:10080/auth/logout \
+  -H "Authorization: Bearer <access_token>"
+```
+
 #### Database Tables
 
 - **users**: User accounts (user_id, email, password, name)
-- **access_tokens**: Active tokens (token, user_id, expires_at)
+- **access_tokens**: Active access tokens (token hash, user_id, expires_at)
+- **refresh_tokens**: Active refresh tokens (token hash, client_id, user_id, expires_at)
 - **client_tokens**: OAuth client credentials
+
+#### Security Notes
+
+- Passwords are hashed with bcrypt (cost 12). Legacy SHA256 hashes are auto-migrated on login.
+- Both access and refresh tokens are SHA256-hashed before database storage. A database leak does not expose usable tokens.
+- Rate limiting is per-IP, per-worker (in-memory store). Effective limit scales with cluster size.
 
 ---
 
@@ -293,17 +350,18 @@ Static file serving based on subdomain:
 
 ## Dependencies
 
-| Package            | Version | Purpose                      |
-| ------------------ | ------- | ---------------------------- |
-| express            | 4.22.1  | Web framework                |
-| mysql2             | 3.16.0  | MySQL driver (promise-based) |
-| @awaitjs/express   | 0.6.1   | Async/await middleware       |
-| ajv                | 6.12.6  | JSON schema validation       |
-| body-parser        | 1.19.0  | Request body parsing         |
-| helmet             | 3.22.0  | Security headers             |
-| node-oauth2-server | 2.4.0   | OAuth 2.0 implementation     |
-| uuid               | 8.0.0   | UUID generation              |
-| moment             | 2.30.1  | Date/time utilities          |
+| Package            | Version | Purpose                         |
+| ------------------ | ------- | ------------------------------- |
+| express            | 4.22.1  | Web framework                   |
+| mysql2             | 3.16.0  | MySQL driver (promise-based)    |
+| @awaitjs/express   | 0.6.1   | Async/await middleware          |
+| ajv                | 6.12.6  | JSON schema validation          |
+| bcrypt             | 6.0.0   | Password hashing                |
+| body-parser        | 1.19.0  | Request body parsing            |
+| express-rate-limit | 8.3.1   | Rate limiting middleware        |
+| helmet             | 3.22.0  | Security headers                |
+| node-oauth2-server | 2.4.0   | OAuth 2.0 implementation        |
+| moment             | 2.30.1  | Date/time utilities             |
 
 ---
 
@@ -399,6 +457,7 @@ All responses follow a consistent format:
 
 ## Version History
 
+- **v1.6.0**: Auth security hardening: bcrypt passwords with SHA256 auto-migration, token hashing, refresh token rotation, rate limiting, logout endpoint
 - **v1.5.0**: Added cluster mode with configurable workers and auto-restart
 - **v1.4.0**: Migrated from mysql to mysql2/promise with async/await
 - **v1.3.x**: Added virtual host-based static file serving

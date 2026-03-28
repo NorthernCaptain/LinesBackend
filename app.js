@@ -64,9 +64,10 @@ if (cluster.isMaster) {
     const app = express()
     app.oauth = oAuth2Server({
         model: authModel,
-        grants: ["password"],
+        grants: ["password", "refresh_token"],
         debug: true,
-        accessTokenLifetime: 3600 * 12,
+        accessTokenLifetime: 900,
+        refreshTokenLifetime: 604800,
     })
 
     const { requestLogger } = require("./utils/logger")
@@ -141,7 +142,9 @@ if (cluster.isMaster) {
         const httpsPort = process.env.HTTPS_PORT || 8443
         httpsServer = https.createServer(credentials, app)
         httpsServer.listen(httpsPort, "0.0.0.0", () => {
-            console.log(`Server 1.5.0 worker ${workerId} HTTPS on :${httpsPort}`)
+            console.log(
+                `Server 1.5.0 worker ${workerId} HTTPS on :${httpsPort}`
+            )
         })
     } else {
         console.log("No SSL certs found, running HTTP only")

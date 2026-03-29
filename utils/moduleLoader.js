@@ -21,7 +21,7 @@ function loadModules() {
     if (!modulesPath) return []
 
     const paths = modulesPath
-        .split(",")
+        .split(":")
         .map((p) => p.trim())
         .filter(Boolean)
 
